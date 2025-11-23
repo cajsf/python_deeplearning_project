@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>파기딥 | 식품 알레르기 안심 검색</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Pretendard:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body class="text-slate-800 flex flex-col min-h-screen justify-center">
+
+    <nav class="absolute top-0 w-full p-6">
+        <div class="max-w-screen-xl mx-auto flex justify-between items-center">
+            <div class="flex items-center space-x-2 text-emerald-600 font-bold text-2xl">
+                <div class="w-8 h-8 bg-emerald-500 rounded-lg flex items-center justify-center text-white">P</div>
+                <span>Pagideep</span>
+            </div>
+            <div class="flex gap-2" id="authSection">
+                </div>
+        </div>
+    </nav>
+
+    <main class="container mx-auto px-4 text-center">
+        <h1 class="text-5xl font-extrabold text-slate-900 mb-6 tracking-tight">
+            안심 먹거리, <span class="text-emerald-500">파기딥</span>
+        </h1>
+        <p class="text-lg text-slate-500 mb-10" id="welcomeMsg">
+            25가지 알레르기 성분 분석을 통해 안전한 식품을 찾아보세요.
+        </p>
+
+        <div class="max-w-3xl mx-auto mb-12 group relative">
+            <div class="absolute inset-y-0 start-0 flex items-center ps-6 pointer-events-none">
+                <i class="fa-solid fa-magnifying-glass text-slate-400 text-xl group-focus-within:text-emerald-500 transition"></i>
+            </div>
+            <input type="search" id="searchInput" class="block w-full p-6 ps-16 text-xl text-slate-900 border border-slate-200 rounded-full shadow-lg focus:ring-4 focus:ring-emerald-100 focus:border-emerald-500 outline-none transition" placeholder="무엇을 찾고 계신가요? (예: 진라면, 과자)" required />
+            <button onclick="handleSearch()" class="absolute end-3 bottom-3 bg-emerald-500 text-white hover:bg-emerald-600 font-bold rounded-full px-8 py-3 transition">
+                검색
+            </button>
+        </div>
+
+        <div class="max-w-5xl mx-auto">
+            <p class="text-sm font-bold text-slate-400 mb-4 text-left ml-2">
+                <i class="fa-solid fa-filter mr-1"></i> 제외하고 싶은 성분 미리 선택
+            </p>
+            <div class="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-8 gap-2" id="filterContainer">
+                </div>
+        </div>
+    </main>
+
+    <div id="loginModal" class="fixed inset-0 z-50 hidden">
+        <div class="fixed inset-0 bg-slate-900 bg-opacity-50 backdrop-blur-sm" onclick="closeModal('loginModal')"></div>
+        <div class="fixed inset-0 flex items-center justify-center p-4">
+            <div class="bg-white rounded-2xl shadow-2xl w-full max-w-[500px] p-8 relative">
+                <div class="flex justify-between items-center mb-6">
+                    <h3 class="text-2xl font-bold text-slate-800">로그인</h3>
+                    <button onclick="closeModal('loginModal')" class="text-slate-400 hover:text-slate-600 text-2xl w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-100 transition"><i class="fa-solid fa-xmark"></i></button>
+                </div>
+                <div class="space-y-4">
+                    <input type="text" id="loginId" placeholder="아이디" class="w-full px-4 py-3 border border-slate-200 rounded-xl outline-none focus:border-emerald-500">
+                    <input type="password" id="loginPw" placeholder="비밀번호" class="w-full px-4 py-3 border border-slate-200 rounded-xl outline-none focus:border-emerald-500" onkeypress="if(event.key==='Enter') login()">
+                    <button onclick="login()" class="w-full bg-emerald-500 text-white py-3 rounded-xl font-bold hover:bg-emerald-600 transition">로그인하기</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="registerModal" class="fixed inset-0 z-50 hidden">
+        <div class="fixed inset-0 bg-slate-900 bg-opacity-50 backdrop-blur-sm" onclick="closeModal('registerModal')"></div>
+        <div class="fixed inset-0 flex items-center justify-center p-4">
+            <div class="bg-white rounded-2xl shadow-2xl w-full max-w-[500px] p-8 relative">
+                <div class="flex justify-between items-center mb-6">
+                    <h3 class="text-2xl font-bold text-slate-800">회원가입</h3>
+                    <button onclick="closeModal('registerModal')" class="text-slate-400 hover:text-slate-600 text-2xl w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-100 transition"><i class="fa-solid fa-xmark"></i></button>
+                </div>
+                <div class="space-y-4">
+                    <input type="text" id="regId" placeholder="사용할 아이디" class="w-full px-4 py-3 border border-slate-200 rounded-xl outline-none focus:border-emerald-500">
+                    <input type="password" id="regPw" placeholder="사용할 비밀번호" class="w-full px-4 py-3 border border-slate-200 rounded-xl outline-none focus:border-emerald-500">
+                    <button onclick="register()" class="w-full bg-slate-800 text-white py-3 rounded-xl font-bold hover:bg-slate-900 transition">가입하기</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
