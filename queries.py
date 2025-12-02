@@ -28,14 +28,19 @@ def get_user_by_username(username):
     finally:
         db.close()
 
-def create_user(username, plain_password):
+def create_user(username, plain_password, nickname=None):
     db = connection()
     try:
         with db.cursor() as cursor:
             password_bytes = plain_password.encode('utf-8')
             hashed_password = bcrypt.hashpw(password_bytes, bcrypt.gensalt())
-            sql = "INSERT INTO Users (username, password) VALUES (%s, %s)"
-            cursor.execute(sql, (username, hashed_password.decode('utf-8')))
+            
+            # 닉네임이 없으면 아이디를 닉네임으로 사용
+            if not nickname:
+                nickname = username
+            
+            sql = "INSERT INTO Users (username, password, nickname) VALUES (%s, %s, %s)"
+            cursor.execute(sql, (username, hashed_password.decode('utf-8'), nickname))
             db.commit()
     except MySQLError as e:
         raise e
@@ -117,9 +122,9 @@ def search_foods_advanced(food_name, avoid_allergy_ids=None, limit=10, offset=0)
     db = connection()
     try:
         with db.cursor() as cursor:
-            # [수정] GROUP_CONCAT을 사용하여 해당 식품의 알레르기 ID들을 '1,2,3' 형태의 문자열로 함께 가져옴
+            # [수정] F.food_img_url 추가
             sql = """
-                SELECT F.food_id, F.food_name, F.food_url, 
+                SELECT F.food_id, F.food_name, F.food_url, F.food_img_url,
                 GROUP_CONCAT(FA.allergy_id) as allergy_ids
                 FROM Food F
                 LEFT JOIN Food_Allergy FA ON F.food_id = FA.food_id
@@ -151,8 +156,9 @@ def get_food_details_by_id(food_id):
     db = connection()
     try:
         with db.cursor() as cursor:
+            # [수정] F.food_img_url 추가
             sql = """
-                SELECT F.food_id, F.food_name, F.food_url, C.company_name
+                SELECT F.food_id, F.food_name, F.food_url, F.food_img_url, C.company_name
                 From Food as F
                 LEFT JOIN Company as C on F.company_id = C.company_id
                 WHERE F.food_id = %s
@@ -368,18 +374,32 @@ def update_user_password(user_id, new_password):
     finally:
         db.close()
 
-def get_recent_foods(limit=100):
+# queries.py 의 get_recent_foods 함수 교체
+
+def get_recent_foods(query=None, limit=100):
     db = connection()
     try:
         with db.cursor() as cursor:
+            # [수정] F.food_img_url 추가
             sql = """
-                SELECT F.food_id, F.food_name, C.company_name 
+                SELECT F.food_id, F.food_name, F.food_img_url, C.company_name 
                 FROM Food F 
                 LEFT JOIN Company C ON F.company_id = C.company_id
-                ORDER BY F.food_id DESC 
-                LIMIT %s
             """
-            cursor.execute(sql, (limit,))
+            
+            params = []
+            
+            # 검색어가 있으면 WHERE 절 추가
+            if query:
+                sql += " WHERE F.food_name LIKE %s OR C.company_name LIKE %s"
+                pattern = f"%{query}%"
+                params.extend([pattern, pattern])
+            
+            # 정렬 및 개수 제한
+            sql += " ORDER BY F.food_id DESC LIMIT %s"
+            params.append(limit)
+
+            cursor.execute(sql, tuple(params))
             return cursor.fetchall()
     finally:
         db.close()

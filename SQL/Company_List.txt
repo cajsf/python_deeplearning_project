@@ -1,0 +1,4 @@
+INSERT INTO Company VALUES (NULL, '오뚜기', '080', '0242311');
+INSERT INTO Company VALUES (NULL, '청정원', '080', '0199119');
+INSERT INTO Company VALUES (NULL, '종가', '080', '9965000');
+INSERT INTO Company VALUES (NULL, 'CJ제일제당', '02', '67401114');

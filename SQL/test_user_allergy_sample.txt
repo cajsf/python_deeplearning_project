@@ -1,0 +1,16 @@
+-- 1번 사용자(admin)에게 '우유', '땅콩' 알레르기 추가
+INSERT INTO User_Allergies VALUES (1, 16); -- 우유
+INSERT INTO User_Allergies VALUES (1, 17); -- 땅콩
+
+-- 2번 사용자(kim)에게 '우유', '난류', '새우' 알레르기 추가
+INSERT INTO User_Allergies VALUES (2, 16); -- 우유
+INSERT INTO User_Allergies VALUES (2, 1);  -- 난류
+INSERT INTO User_Allergies VALUES (2, 8);  -- 새우
+
+-- 3번 사용자(lee)에게 '우유', '대두', '밀' 알레르기 추가
+INSERT INTO User_Allergies VALUES (3, 16); -- 우유
+INSERT INTO User_Allergies VALUES (3, 20); -- 대두
+INSERT INTO User_Allergies VALUES (3, 23); -- 밀
+
+-- 4번 사용자(park)에게 '땅콩' 알레르기 추가
+INSERT INTO User_Allergies VALUES (4, 17); -- 땅콩

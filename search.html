@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>검색 결과 | 파기딥</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <link href="https://fonts.googleapis.com/css2?family=Pretendard:wght@300;400;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="style.css">
@@ -22,9 +23,16 @@
                 <div class="absolute inset-y-0 start-0 flex items-center ps-4 pointer-events-none">
                     <i class="fa-solid fa-magnifying-glass text-slate-400"></i>
                 </div>
-                <input type="search" id="searchInput" class="block w-full py-2.5 ps-10 text-sm text-slate-900 border border-slate-200 rounded-full bg-slate-50 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition focus:bg-white shadow-inner" placeholder="검색어 입력 (예: 라면)">
+                
+                <input type="search" id="searchInput" class="block w-full py-2.5 ps-10 pe-12 text-sm text-slate-900 border border-slate-200 rounded-full bg-slate-50 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition focus:bg-white shadow-inner" placeholder="검색어 입력 (예: 라면)">
+                
+                <button onclick="document.getElementById('hiddenAiInput').click()" class="absolute inset-y-0 right-3 flex items-center text-slate-400 hover:text-emerald-500 cursor-pointer p-1 focus:outline-none" title="이미지로 검색">
+                    <i class="fa-solid fa-camera text-lg"></i>
+                </button>
+                
+                <input type="file" id="hiddenAiInput" class="hidden" accept="image/*" onchange="uploadAndAnalyze(this)">
             </div>
-        
+
             <div class="shrink-0">
                 <button onclick="handleSearch()" class="bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-2.5 px-6 rounded-full shadow-md transition text-sm whitespace-nowrap">
                     검색
@@ -39,6 +47,43 @@
     </nav>
 
     <section class="max-w-screen-xl mx-auto px-4 pt-40 pb-12">
+        
+        <div id="aiResultArea" class="max-w-3xl mx-auto mb-12 hidden">
+            <div id="aiLoading" class="hidden bg-white p-6 rounded-3xl shadow-lg border border-emerald-100 flex items-center justify-center gap-4 mb-6">
+                <div class="w-8 h-8 border-4 border-emerald-200 border-t-emerald-500 rounded-full animate-spin"></div>
+                <span class="text-emerald-600 font-bold animate-pulse">AI가 음식 이미지를 분석하고 있습니다...</span>
+            </div>
+
+            <div id="aiResultCard" class="hidden bg-white p-6 rounded-3xl shadow-xl border border-slate-100 text-left transform transition-all mb-6">
+                <div class="flex flex-col md:flex-row gap-6">
+                    <div class="w-full md:w-1/3">
+                        <img id="aiPreviewImg" src="" class="w-full h-48 object-cover rounded-2xl border border-slate-100">
+                    </div>
+                    <div class="w-full md:w-2/3">
+                        <div class="flex justify-between items-start mb-2">
+                            <div>
+                                <span class="text-xs font-bold text-emerald-500 bg-emerald-50 px-2 py-1 rounded">AI Analysis</span>
+                                <h3 class="text-2xl font-bold text-slate-900 mt-1" id="aiFoodName">음식 이름</h3>
+                            </div>
+                            <div id="aiSafetyBadge"></div>
+                        </div>
+                        <div class="mb-4">
+                            <p class="text-xs text-slate-400 font-bold mb-1">감지된 재료</p>
+                            <div class="flex flex-wrap gap-2" id="aiIngredients"></div>
+                        </div>
+                        <div id="aiWarningBox" class="hidden bg-red-50 p-3 rounded-xl border border-red-100 text-sm text-red-700 mb-4 flex items-start">
+                            <i class="fa-solid fa-triangle-exclamation mt-0.5 mr-2"></i>
+                            <span>회원님의 알레르기 유발 성분이 포함될 가능성이 있습니다.</span>
+                        </div>
+                        <button onclick="searchFromAi()" class="w-full bg-slate-900 text-white py-3 rounded-xl font-bold text-sm hover:bg-slate-800 transition">
+                            이 음식으로 상세 검색하기 <i class="fa-solid fa-arrow-right ml-1"></i>
+                        </button>
+                    </div>
+                </div>
+                <button onclick="closeAiResult()" class="absolute top-4 right-4 text-slate-300 hover:text-slate-500"><i class="fa-solid fa-xmark text-xl"></i></button>
+            </div>
+        </div>
+
         <div class="flex justify-between items-center mb-6">
             <h2 class="text-xl font-bold text-slate-800">검색 결과</h2>
             <span id="resultCount" class="text-sm text-slate-500">검색 중...</span>
@@ -63,25 +108,44 @@
                 <div class="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden">
                     <div class="bg-white px-6 py-4 border-b border-slate-100 flex justify-between items-center sticky top-0 z-10">
                         <h3 class="text-lg font-bold text-slate-900">상세 분석 리포트</h3>
-                        <button onclick="closeModal('detailModal')" class="text-2xl">&times;</button>
+                        <button onclick="closeModal('detailModal')" class="text-2xl text-slate-400 hover:text-slate-600 transition"><i class="fa-solid fa-xmark"></i></button>
                     </div>
                     <div class="px-6 py-8 flex flex-col md:flex-row gap-8">
                         <div class="md:w-5/12 text-center">
-                            <div class="bg-slate-50 rounded-2xl aspect-square flex items-center justify-center mb-5 text-slate-300 border border-slate-100"><i class="fa-solid fa-image text-6xl"></i></div>
+                            <div class="bg-slate-50 rounded-2xl aspect-square flex items-center justify-center mb-5 text-slate-300 border border-slate-100 overflow-hidden relative">
+                                <img id="mFoodImage" src="" alt="상품 이미지" class="w-full h-full object-contain hidden z-10">
+                                
+                                <i id="mFoodIcon" class="fa-solid fa-image text-6xl absolute"></i>
+                            </div>
                             <h2 class="text-xl font-bold text-slate-900 mb-1" id="mFoodName"></h2>
                             <p class="text-sm text-slate-500 mb-5" id="mCompany"></p>
-                            <a href="#" id="mLink" target="_blank" class="block w-full py-3 bg-slate-900 text-white rounded-xl text-sm font-bold hover:bg-slate-800">구매 링크</a>
+                            <div class="flex gap-2">
+                                <a href="#" id="mLink" target="_blank" class="flex-1 py-3 bg-slate-900 text-white rounded-xl text-sm font-bold hover:bg-slate-800 transition shadow-md flex items-center justify-center gap-2">
+                                    구매 링크 <i class="fa-solid fa-arrow-up-right-from-square"></i>
+                                </a>
+                                <button onclick="shareProduct()" class="px-4 py-3 border border-slate-200 rounded-xl text-slate-600 hover:bg-slate-50 transition" title="링크 공유">
+                                    <i class="fa-solid fa-share-nodes"></i>
+                                </button>
+                            </div>
                         </div>
                         <div class="md:w-7/12 space-y-6">
-                            <div><h4 class="text-xs font-bold text-slate-400 uppercase mb-2">포함된 알레르기</h4><div id="mAllergies" class="flex flex-wrap gap-2"></div></div>
-                            <div id="mCrossSection" class="hidden bg-orange-50 p-4 rounded-xl border border-orange-100"><h4 class="text-xs font-bold text-orange-800 uppercase mb-1">교차 반응 주의</h4><p class="text-sm text-orange-700" id="mCrossText"></p></div>
-                            <div><h4 class="text-xs font-bold text-slate-400 uppercase mb-2">추천 대체 식품</h4><ul id="mAlternatives" class="space-y-2 text-sm text-slate-600"></ul></div>
+                            <div><h4 class="text-xs font-bold text-slate-400 uppercase mb-2">포함된 알레르기 유발물질</h4><div id="mAllergies" class="flex flex-wrap gap-2"></div></div>
+                            <div id="mCrossSection" class="hidden bg-orange-50 p-4 rounded-xl border border-orange-100">
+                                <h4 class="text-xs font-bold text-orange-800 uppercase mb-1">
+                                    <i class="fa-solid fa-user-doctor mr-1"></i> 교차 반응 주의
+                                </h4>
+                                <p class="text-sm text-orange-700" id="mCrossText"></p>
+                            </div>
+                            <div><h4 class="text-xs font-bold text-slate-400 uppercase mb-2">추천 대체 식품</h4><ul id="mAlternatives" class="space-y-2 text-sm text-slate-600 bg-slate-50 p-3 rounded-xl border border-slate-100"></ul></div>
                         </div>
                     </div>
                 </div>
             </div>
         </div>
     </div>
+
+    <div id="loginModal" class="fixed inset-0 z-50 hidden"><div class="fixed inset-0 bg-slate-900 bg-opacity-50 backdrop-blur-sm" onclick="closeModal('loginModal')"></div><div class="fixed inset-0 flex items-center justify-center p-4"><div class="bg-white rounded-2xl shadow-2xl w-full max-w-[500px] p-8 relative"><div class="flex justify-between items-center mb-6"><h3 class="text-2xl font-bold text-slate-800">로그인</h3><button onclick="closeModal('loginModal')" class="text-slate-400 hover:text-slate-600 text-2xl w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-100 transition"><i class="fa-solid fa-xmark"></i></button></div><div class="space-y-4"><input type="text" id="loginId" placeholder="아이디" class="w-full px-4 py-3 border border-slate-200 rounded-xl outline-none focus:border-emerald-500 transition bg-slate-50 focus:bg-white"><input type="password" id="loginPw" placeholder="비밀번호" class="w-full px-4 py-3 border border-slate-200 rounded-xl outline-none focus:border-emerald-500 transition bg-slate-50 focus:bg-white" onkeypress="if(event.key==='Enter') login()"><button onclick="login()" class="w-full bg-emerald-500 text-white py-3 rounded-xl font-bold hover:bg-emerald-600 transition shadow-lg mt-2">로그인하기</button></div></div></div></div>
+    <div id="registerModal" class="fixed inset-0 z-50 hidden"><div class="fixed inset-0 bg-slate-900 bg-opacity-50 backdrop-blur-sm" onclick="closeModal('registerModal')"></div><div class="fixed inset-0 flex items-center justify-center p-4"><div class="bg-white rounded-2xl shadow-2xl w-full max-w-[500px] p-8 relative"><div class="flex justify-between items-center mb-6"><h3 class="text-2xl font-bold text-slate-800">회원가입</h3><button onclick="closeModal('registerModal')" class="text-slate-400 hover:text-slate-600 text-2xl w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-100 transition"><i class="fa-solid fa-xmark"></i></button></div><div class="space-y-4"><input type="text" id="regId" placeholder="사용할 아이디" class="w-full px-4 py-3 border border-slate-200 rounded-xl outline-none focus:border-emerald-500 transition bg-slate-50 focus:bg-white"><input type="password" id="regPw" placeholder="사용할 비밀번호" class="w-full px-4 py-3 border border-slate-200 rounded-xl outline-none focus:border-emerald-500 transition bg-slate-50 focus:bg-white"><button onclick="register()" class="w-full bg-slate-800 text-white py-3 rounded-xl font-bold hover:bg-slate-900 transition shadow-lg mt-2">가입하기</button></div></div></div></div>
 
     <script src="script.js"></script>
 </body>
