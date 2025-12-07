@@ -1,0 +1,90 @@
+// Database Schema for Food Allergy Information System
+// --- Made with dbdiagram.io ---
+
+// --- 기본 정보 테이블 ---
+
+Table Company {
+  company_id int [pk, increment]
+  company_name varchar(20) [not null]
+  company_phone1 varchar(3)
+  company_phone2 varchar(8)
+}
+
+Table Food {
+  food_id int [pk, increment]
+  company_id int [not null]
+  food_name varchar(50) [not null]
+  food_url varchar(255)
+  food_img_url varchar(255)
+}
+
+Table Allergy {
+  allergy_id int [pk, increment]
+  allergy_name varchar(30) [not null]
+}
+
+Table Alternative_Food {
+  alternative_food_id int [pk, increment]
+  alternative_food_name varchar(30) [not null]
+}
+
+Table Cross_Reaction {
+  cross_reaction_id int [pk, increment]
+  cross_reaction_name varchar(20) [not null]
+}
+
+
+// --- 사용자 정보 테이블 (추가된 기능) ---
+
+Table Users {
+  user_id int [pk, increment]
+  username varchar(50) [unique, not null]
+  password varchar(72) [not null, note: 'bcrypt 해시값 저장을 위해 72자로 설정']
+  role varchar(10) [not null, default: 'user', note: "'user' 또는 'admin'"]
+  nickname varchar(30)
+  profile_image varchar(255)
+}
+
+
+// --- 관계 정의를 위한 연결 테이블 (Junction Tables) ---
+
+Table Food_Allergy {
+  food_id int [pk]
+  allergy_id int [pk]
+}
+
+Table Allergy_Alternative_Food {
+  allergy_id int [pk]
+  alternative_food_id int [pk]
+}
+
+Table Allergy_Cross_Reaction {
+  allergy_id int [pk]
+  cross_reaction_id int [pk]
+  cross_reactivity_rate int
+}
+
+Table User_Allergies {
+  user_id int [pk]
+  allergy_id int [pk]
+}
+
+
+// --- 관계 설정 (Foreign Key Relationships) ---
+
+// 식품 정보 관계
+Ref: Company.company_id < Food.company_id
+Ref: Food.food_id < Food_Allergy.food_id
+Ref: Allergy.allergy_id < Food_Allergy.allergy_id
+
+// 알레르기 부가 정보 관계
+Ref: Allergy.allergy_id < Allergy_Alternative_Food.allergy_id
+Ref: Alternative_Food.alternative_food_id < Allergy_Alternative_Food.alternative_food_id
+Ref: Allergy.allergy_id < Allergy_Cross_Reaction.allergy_id
+Ref: Cross_Reaction.cross_reaction_id < Allergy_Cross_Reaction.cross_reaction_id
+
+// 사용자 정보 관계
+Ref: Users.user_id < User_Allergies.user_id
+Ref: Allergy.allergy_id < User_Allergies.allergy_id
+
+Ref: "Company"."company_id" < "Company"."company_name"

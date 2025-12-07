@@ -4,10 +4,6 @@ import shutil
 import random
 from tqdm import tqdm
 
-# ==========================================
-# 1. 설정 (개수 제한 추가됨!)
-# ==========================================
-# 음식별로 최대 몇 장 뽑을까요? (100~200 추천)
 MAX_IMAGES_PER_CLASS = 300 
 
 BASE_TRAIN_LABEL = r"E:\데이터셋\건강관리를 위한 음식 이미지\Training\라벨"
@@ -17,9 +13,6 @@ BASE_VAL_IMAGE = r"E:\데이터셋\건강관리를 위한 음식 이미지\Valid
 
 OUTPUT_DIR = r"E:\YOLO\datasets"
 
-# ==========================================
-# 2. 이미지 폴더 지도 생성
-# ==========================================
 def build_image_folder_map(image_root):
     print(f"이미지 폴더 위치를 파악 중입니다... ({image_root})")
     folder_map = {}
@@ -35,9 +28,6 @@ def build_image_folder_map(image_root):
     print(f"👉 총 {len(folder_map)}개의 이미지 폴더를 찾았습니다.")
     return folder_map
 
-# ==========================================
-# 3. 데이터 변환 실행 함수 (랜덤 샘플링 적용)
-# ==========================================
 def process_dataset(label_root, image_folder_map, output_root, split_name, class_to_id):
     img_dest = os.path.join(output_root, split_name, 'images')
     lbl_dest = os.path.join(output_root, split_name, 'labels')
@@ -47,14 +37,13 @@ def process_dataset(label_root, image_folder_map, output_root, split_name, class
     print(f"\n[{split_name}] 데이터 매칭 및 변환 시작 (클래스당 최대 {MAX_IMAGES_PER_CLASS}장 제한)...")
     
     total_processed = 0
-    
-    # os.walk로 모든 라벨 폴더를 돕니다.
+
     for root, dirs, files in os.walk(label_root):
         json_files = [f for f in files if f.endswith('.json')]
         if not json_files:
             continue
 
-        # 라벨 폴더 이름 정제 ("가리비 json" -> "가리비")
+        # 라벨 폴더 이름 정제
         label_folder_name = os.path.basename(root)
         clean_name = label_folder_name.replace(" json", "").replace("_json", "").strip()
         
@@ -68,9 +57,6 @@ def process_dataset(label_root, image_folder_map, output_root, split_name, class
             
         class_id = class_to_id[clean_name]
 
-        # ==================================================
-        # [핵심] 너무 많으면 랜덤으로 섞어서 N개만 뽑기!
-        # ==================================================
         if len(json_files) > MAX_IMAGES_PER_CLASS:
             selected_files = random.sample(json_files, MAX_IMAGES_PER_CLASS)
         else:
@@ -122,9 +108,6 @@ def process_dataset(label_root, image_folder_map, output_root, split_name, class
 
     print(f"[{split_name}] 완료! 총 {total_processed}장 저장됨.")
 
-# ==========================================
-# 4. 실행부
-# ==========================================
 if __name__ == "__main__":
     # 이미지 맵 생성
     train_image_map = build_image_folder_map(BASE_TRAIN_IMAGE)
@@ -150,9 +133,9 @@ names: {classes}
     with open(os.path.join(OUTPUT_DIR, 'data.yaml'), 'w', encoding='utf-8') as f:
         f.write(yaml_content)
 
-    # Train 데이터 처리 (랜덤 샘플링 적용)
+    # Train 데이터 처리
     process_dataset(BASE_TRAIN_LABEL, train_image_map, OUTPUT_DIR, 'train', class_to_id)
     
-    # Validation 데이터 처리 (여기는 양이 적으니 그냥 다 하거나, 똑같이 제한)
+    # Validation 데이터 처리
     val_image_map = build_image_folder_map(BASE_VAL_IMAGE)
     process_dataset(BASE_VAL_LABEL, val_image_map, OUTPUT_DIR, 'val', class_to_id)

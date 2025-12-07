@@ -1,23 +1,19 @@
+import os
 import pymysql
 from pymysql.err import MySQLError
 import bcrypt
 
-# ==========================================
-# [1] 공통 유틸리티
-# ==========================================
 def connection():
     return pymysql.connect(
-        host='127.0.0.1',  # [중요] 'localhost' 대신 '127.0.0.1' 사용! (속도 해결)
-        user='root',
-        password='1234',
-        database='Food_Allergy_DB',
-        port=3306,
+        host=os.getenv("DB_HOST", "host.docker.internal"),
+        user=os.getenv("DB_USER", "root"),
+        password=os.getenv("DB_PASSWORD", "1234"),
+        database=os.getenv("DB_NAME", "Food_Allergy_DB"),
+        port=int(os.getenv("DB_PORT", "3306")),
         cursorclass=pymysql.cursors.DictCursor
     )
 
-# ==========================================
-# [2] 사용자 및 인증 관련
-# ==========================================
+# 사용자 및 인증 관련
 def get_user_by_username(username):
     db = connection()
     try:
@@ -28,6 +24,7 @@ def get_user_by_username(username):
     finally:
         db.close()
 
+# 사용자 생성
 def create_user(username, plain_password, nickname=None):
     db = connection()
     try:
@@ -47,6 +44,7 @@ def create_user(username, plain_password, nickname=None):
     finally:
         db.close()
 
+# 사용자 삭제 (관리자 계정 보호)
 def delete_user(user_id):
     db = connection()
     try:
@@ -65,9 +63,7 @@ def delete_user(user_id):
     finally:
         db.close()
 
-# ==========================================
-# [3] 사용자 알레르기 관리
-# ==========================================
+# 사용자 알레르기 관리
 def get_user_allergies(user_id):
     db = connection()
     try:
@@ -83,6 +79,7 @@ def get_user_allergies(user_id):
     finally:
         db.close()
 
+# 사용자 알레르기 추가/삭제
 def add_user_allergy_by_id(user_id, allergy_id):
     db = connection()
     try:
@@ -100,6 +97,7 @@ def add_user_allergy_by_id(user_id, allergy_id):
     finally:
         db.close()
 
+# 사용자 알레르기 삭제
 def delete_user_allergy_by_id(user_id, allergy_id):
     db = connection()
     try:
@@ -112,17 +110,12 @@ def delete_user_allergy_by_id(user_id, allergy_id):
     finally:
         db.close()
 
-# ==========================================
-# [4] 식품 조회 및 검색 (심화 정보 포함)
-# ==========================================
 
-# queries.py 내부 수정
-
+# 음식 및 알레르기 정보 조회
 def search_foods_advanced(food_name, avoid_allergy_ids=None, limit=10, offset=0):
     db = connection()
     try:
         with db.cursor() as cursor:
-            # [수정] F.food_img_url 추가
             sql = """
                 SELECT F.food_id, F.food_name, F.food_url, F.food_img_url,
                 GROUP_CONCAT(FA.allergy_id) as allergy_ids
@@ -132,7 +125,7 @@ def search_foods_advanced(food_name, avoid_allergy_ids=None, limit=10, offset=0)
             """
             params = [f"%{food_name}%"]
 
-            # 안심 필터링 (SQL 레벨에서 제외)
+            # 안심 필터링
             if avoid_allergy_ids:
                 format_strings = ','.join(['%s'] * len(avoid_allergy_ids))
                 sql += f"""
@@ -152,11 +145,11 @@ def search_foods_advanced(food_name, avoid_allergy_ids=None, limit=10, offset=0)
     finally:
         db.close()
 
+# 특정 음식의 상세 정보 조회
 def get_food_details_by_id(food_id):
     db = connection()
     try:
         with db.cursor() as cursor:
-            # [수정] F.food_img_url 추가
             sql = """
                 SELECT F.food_id, F.food_name, F.food_url, F.food_img_url, C.company_name
                 From Food as F
@@ -168,6 +161,7 @@ def get_food_details_by_id(food_id):
     finally:
         db.close()
 
+# 특정 음식의 알레르기 조회
 def get_allergies_for_food(food_id):
     db = connection()
     try:
@@ -183,6 +177,7 @@ def get_allergies_for_food(food_id):
     finally:
         db.close()
 
+# 특정 알레르기에 대한 대체 음식 및 교차 반응 조회
 def get_alternatives_for_allergy(allergy_id):
     db = connection()
     try:
@@ -199,6 +194,7 @@ def get_alternatives_for_allergy(allergy_id):
     finally:
         db.close()
 
+# 특정 알레르기에 대한 교차 반응 조회
 def get_cross_reactions_for_allergy(allergy_id):
     db = connection()
     try:
@@ -223,24 +219,33 @@ def get_all_allergies():
     finally:
         db.close()
 
-# ==========================================
-# [5] 관리자 기능 (데이터 추가/수정/삭제/통계)
-# ==========================================
-
-# 1. 제품 및 알레르기 동시 등록
+# 제품 및 알레르기 동시 등록
 def create_food_with_allergies(food_name, company_name, food_url, allergy_ids):
     db = connection()
     try:
         with db.cursor() as cursor:
             # 회사 ID 확인
-            cursor.execute("SELECT company_id FROM Company WHERE company_name = %s", (company_name,))
+            cursor.execute(
+                "SELECT company_id FROM Company WHERE company_name = %s",
+                (company_name,)
+            )
             company = cursor.fetchone()
-            if not company: return None
-            company_id = company['company_id']
+
+            if not company:
+                # 회사가 없으면 새로 생성
+                cursor.execute(
+                    "INSERT INTO Company (company_name) VALUES (%s)",
+                    (company_name,)
+                )
+                company_id = cursor.lastrowid
+            else:
+                company_id = company["company_id"]
 
             # 식품 등록
-            cursor.execute("INSERT INTO Food (company_id, food_name, food_url) VALUES (%s, %s, %s)", 
-                           (company_id, food_name, food_url))
+            cursor.execute(
+                "INSERT INTO Food (company_id, food_name, food_url) VALUES (%s, %s, %s)",
+                (company_id, food_name, food_url)
+            )
             food_id = cursor.lastrowid
 
             # 알레르기 매핑
@@ -248,7 +253,7 @@ def create_food_with_allergies(food_name, company_name, food_url, allergy_ids):
                 sql_map = "INSERT INTO Food_Allergy (food_id, allergy_id) VALUES (%s, %s)"
                 for aid in allergy_ids:
                     cursor.execute(sql_map, (food_id, aid))
-            
+
             db.commit()
             return food_id
     except MySQLError as e:
@@ -257,7 +262,8 @@ def create_food_with_allergies(food_name, company_name, food_url, allergy_ids):
     finally:
         db.close()
 
-# 2. 제품의 알레르기 정보 수정 (기존 정보 삭제 후 재등록)
+
+# 제품의 알레르기 정보 수정 (기존 정보 삭제 후 재등록)
 def update_food_allergies(food_id, new_allergy_ids):
     db = connection()
     try:
@@ -283,23 +289,22 @@ def update_food_allergies(food_id, new_allergy_ids):
     finally:
         db.close()
 
-# 3. 제품 삭제
+# 제품 삭제
 def delete_food_by_id(food_id):
     db = connection()
     try:
         with db.cursor() as cursor:
-            # Food_Allergy 테이블은 CASCADE 설정이 되어 있다고 가정하거나, 명시적으로 삭제
             cursor.execute("DELETE FROM Food_Allergy WHERE food_id = %s", (food_id,))
             cursor.execute("DELETE FROM Food WHERE food_id = %s", (food_id,))
             db.commit()
-            return True # 삭제 성공
+            return True
     except MySQLError:
         db.rollback()
         return False
     finally:
         db.close()
 
-# 4. 전체 회원 조회
+# 전체 회원 조회
 def get_all_users():
     db = connection()
     try:
@@ -309,7 +314,7 @@ def get_all_users():
     finally:
         db.close()
 
-# 5. 알레르기 통계
+# 알레르기 통계
 def get_top_allergies(limit=5):
     db = connection()
     try:
@@ -327,12 +332,11 @@ def get_top_allergies(limit=5):
     finally:
         db.close()
 
-
+# 사용자 프로필 업데이트
 def update_user_profile(user_id, nickname=None, profile_image=None):
     db = connection()
     try:
         with db.cursor() as cursor:
-            # 변경할 값이 있는 경우에만 쿼리 생성
             updates = []
             params = []
             
@@ -345,7 +349,7 @@ def update_user_profile(user_id, nickname=None, profile_image=None):
                 params.append(profile_image)
             
             if not updates:
-                return False # 변경할 내용 없음
+                return False
 
             sql = f"UPDATE Users SET {', '.join(updates)} WHERE user_id = %s"
             params.append(user_id)
@@ -358,6 +362,7 @@ def update_user_profile(user_id, nickname=None, profile_image=None):
     finally:
         db.close()
 
+# 비밀번호 변경
 def update_user_password(user_id, new_password):
     db = connection()
     try:
@@ -374,13 +379,11 @@ def update_user_password(user_id, new_password):
     finally:
         db.close()
 
-# queries.py 의 get_recent_foods 함수 교체
-
+# 최근 음식 조회 (검색어 옵션)
 def get_recent_foods(query=None, limit=100):
     db = connection()
     try:
         with db.cursor() as cursor:
-            # [수정] F.food_img_url 추가
             sql = """
                 SELECT F.food_id, F.food_name, F.food_img_url, C.company_name 
                 FROM Food F 
@@ -389,13 +392,11 @@ def get_recent_foods(query=None, limit=100):
             
             params = []
             
-            # 검색어가 있으면 WHERE 절 추가
             if query:
                 sql += " WHERE F.food_name LIKE %s OR C.company_name LIKE %s"
                 pattern = f"%{query}%"
                 params.extend([pattern, pattern])
             
-            # 정렬 및 개수 제한
             sql += " ORDER BY F.food_id DESC LIMIT %s"
             params.append(limit)
 

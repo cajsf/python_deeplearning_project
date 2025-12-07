@@ -1,5 +1,6 @@
 from fastapi import FastAPI, HTTPException, Depends, status, Query, File, UploadFile, Form
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import bcrypt 
@@ -13,8 +14,6 @@ import shutil
 from PIL import Image 
 import io
 import json
-
-# [추가됨] AI 관련 라이브러리
 from ultralytics import YOLO
 import google.generativeai as genai 
 
@@ -41,8 +40,6 @@ from queries import (
     update_food_allergies
 )
 
-# --- [설정 영역] ---
-
 # 1. JWT 설정
 SECRET_KEY = "4b77851cf47fdb77d433a3793435ded83916ef7aec69f26f222cb5db6673acdb"
 ALGORITHM = "HS256"
@@ -56,46 +53,42 @@ except:
     print("Gemini API 설정 실패 (키 누락 등)")
 
 # 3. YOLO 모델 로드
-MODEL_PATH = "C:\\Users\\rkdal\\Desktop\\학교\\3-2\\파이썬기반딥러닝\\기말 프로젝트\\Food_Detection_Project\\train_result_300sample\\weights\\best.pt"
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+MODEL_PATH = os.path.join(BASE_DIR, "weights", "best.pt")
+
 local_model = None
 try:
     if os.path.exists(MODEL_PATH):
-        print("🔄 YOLO 모델 로딩 중...")
+        print("YOLO 모델 로딩 중...")
         local_model = YOLO(MODEL_PATH)
-        print("✅ YOLO 모델 로드 완료!")
+        print("YOLO 모델 로드 완료!")
     else:
-        print(f"⚠️ 모델 파일을 찾을 수 없습니다: {MODEL_PATH}")
+        print(f"모델 파일을 찾을 수 없습니다: {MODEL_PATH}")
 except Exception as e:
-    print(f"❌ 모델 로드 에러: {e}")
+    print(f"모델 로드 에러: {e}")
 
 
-# [MLOps] 데이터 수집용 폴더 생성
+# 데이터 수집용 폴더 생성
 if not os.path.exists("static/ai_temp"): os.makedirs("static/ai_temp")       # 임시 저장소
-if not os.path.exists("static/dataset/images"): os.makedirs("static/dataset/images") # 피드백 받은 이미지 (학습용)
-if not os.path.exists("static/dataset/labels"): os.makedirs("static/dataset/labels") # 정답 라벨 (학습용)
+if not os.path.exists("static/dataset/images"): os.makedirs("static/dataset/images") # 피드백 받은 이미지
+if not os.path.exists("static/dataset/labels"): os.makedirs("static/dataset/labels") # 정답 라벨
 
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 oauth2_scheme_optional = OAuth2PasswordBearer(tokenUrl="/api/auth/login", auto_error=False)
 
 app = FastAPI()
-
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-
 if not os.path.exists(os.path.join(BASE_DIR, "static/profiles")):
     os.makedirs(os.path.join(BASE_DIR, "static/profiles"))
 
 STATIC_DIR = os.path.join(BASE_DIR, "static")
 
-# 3. [중요] 터미널에 경로를 출력해서 확인해봅시다.
-print("\n" + "="*50)
-print(f"✅ 현재 main.py 위치: {BASE_DIR}")
-print(f"✅ 파이썬이 찾은 static 폴더: {STATIC_DIR}")
 
 if os.path.exists(STATIC_DIR):
-    print("🎉 폴더가 실제로 존재합니다! 연결을 시도합니다.")
+    print("폴더가 존재합니다! 연결을 시도합니다.")
 else:
-    print("🚨 [오류] 폴더가 없습니다! 경로를 다시 확인해주세요.")
+    print("폴더가 없습니다! 경로를 다시 확인해주세요.")
 print("="*50 + "\n")
 
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
@@ -108,7 +101,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# --- Models (기존 유지) ---
+#모델
 class PasswordChange(BaseModel):
     current_password: str
     new_password: str
@@ -183,13 +176,14 @@ class FeedbackCreate(BaseModel):
     filename: str
     correct_name: str
 
-# --- Utils ---
+# JWT 토큰 생성
 def create_access_token(data: dict):
     to_encode = data.copy()
     expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
+# 현재 사용자 확인 (로그인 필수)
 def get_current_user(token: str = Depends(oauth2_scheme)):
     credentials_exception = HTTPException(
         status_code = status.HTTP_401_UNAUTHORIZED,
@@ -206,6 +200,7 @@ def get_current_user(token: str = Depends(oauth2_scheme)):
         return db_user
     except JWTError: raise credentials_exception
 
+# 선택적 현재 사용자 (로그인 안 해도 됨)
 def get_current_user_optional(token: Optional[str] = Depends(oauth2_scheme_optional)):
     if token is None: return None
     try:
@@ -218,28 +213,26 @@ def get_current_user_optional(token: Optional[str] = Depends(oauth2_scheme_optio
         return db_user
     except (JWTError, AttributeError): return None
 
+# 관리자 권한 확인
 def get_current_admin_user(current_user: dict = Depends(get_current_user)):
     if current_user['role'] != 'admin':
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="관리자 권한이 필요합니다.")
     return current_user
 
-# --- Routes ---
 
-# [핵심] AI 이미지 분석 API (로컬 YOLO + Gemini 하이브리드)
-# api_main.py 의 predict_food 함수 교체
-
+# AI 음식 이미지 분석
 @app.post("/api/ai/predict")
 async def predict_food(file: UploadFile = File(...)):
     # 1. 이미지 읽기
     image_data = await file.read()
     image = Image.open(io.BytesIO(image_data))
     
-    # [MLOps 1] 분석 요청된 이미지를 임시 폴더에 저장 (파일명: 날짜_시간.jpg)
+    #분석 요청된 이미지를 임시 폴더에 저장 (파일명: 날짜_시간.jpg)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
     temp_filename = f"{timestamp}.jpg"
     temp_path = f"static/ai_temp/{temp_filename}"
     
-    # RGB 변환 후 저장 (YOLO 학습용은 보통 JPG 사용)
+    # RGB 변환 후 저장
     if image.mode in ("RGBA", "P"): image = image.convert("RGB")
     image.save(temp_path, quality=90)
     
@@ -249,11 +242,8 @@ async def predict_food(file: UploadFile = File(...)):
     ingredients = []
 
     print("\n" + "="*50)
-    print(f"📸 이미지 분석 시작: {file.filename}")
+    print(f"이미지 분석 시작: {file.filename}")
 
-    # ---------------------------------------------------------
-    # [Step 1] 로컬 YOLO 모델 예측
-    # ---------------------------------------------------------
     if local_model:
         try:
             results = local_model.predict(image, conf=0.1, verbose=False) 
@@ -266,17 +256,14 @@ async def predict_food(file: UploadFile = File(...)):
                         detected_name = r.names[cls_id]
             
             if detected_name:
-                print(f"🤖 로컬 모델 탐지: '{detected_name}' ({confidence*100:.2f}%)")
+                print(f"로컬 모델 탐지: '{detected_name}' ({confidence*100:.2f}%)")
             else:
-                print("🤖 로컬 모델: 탐지된 객체 없음")
+                print("로컬 모델: 탐지된 객체 없음")
         except Exception as e:
-            print(f"❌ 로컬 모델 에러: {e}")
+            print(f"로컬 모델 에러: {e}")
 
-    # ---------------------------------------------------------
-    # [Step 2] Gemini 호출 (정확도 70% 미만일 때)
-    # ---------------------------------------------------------
     if detected_name is None or confidence < 0.7: 
-        print(f"⚠️ 정확도 부족 ({confidence*100:.2f}%). Gemini 호출 시도...")
+        print(f"정확도 부족 ({confidence*100:.2f}%). Gemini 호출 시도...")
         
         if GOOGLE_API_KEY == "여기에_GEMINI_API_KEY_입력":
             if detected_name: source = f"Local AI (Low Conf: {confidence*100:.0f}%)"
@@ -306,10 +293,6 @@ async def predict_food(file: UploadFile = File(...)):
     
     print("="*50 + "\n")
 
-    # ---------------------------------------------------------
-    # [Step 3] 결과 반환 (DB 매칭 제거됨)
-    # ---------------------------------------------------------
-    
     if not detected_name:
         return {"name": "분석 실패", "ingredients": [], "source": "Failed"}
 
@@ -317,16 +300,14 @@ async def predict_food(file: UploadFile = File(...)):
     if not ingredients:
         ingredients = ["상세 재료 정보는 Gemini 또는 상세 검색을 확인하세요"]
 
-    # DB에서 억지로 매칭해서 이름을 바꾸는 코드를 삭제했습니다.
-    # AI가 찾은 이름 그대로 돌려줍니다. -> 프론트엔드에서 이 이름으로 검색을 수행합니다.
     return {
         "name": detected_name,
-        "ingredients": ingredients, # (기존 변수 그대로)
-        "source": source,           # (기존 변수 그대로)
-        "filename": temp_filename   # [추가됨] 프론트엔드가 피드백 줄 때 쓸 파일명
+        "ingredients": ingredients,
+        "source": source,
+        "filename": temp_filename 
     }
 
-# --- (아래는 기존 코드 그대로 유지) ---
+# 아이디 중복 확인
 @app.get("/api/auth/check-username")
 def check_username_availability(username: str = Query(..., min_length=1)):
     # 이미 있는 아이디인지 확인
@@ -335,18 +316,19 @@ def check_username_availability(username: str = Query(..., min_length=1)):
     else:
         return {"available": True, "message": "사용 가능한 아이디입니다."}
 
+# 회원가입
 @app.post("/api/auth/register")
 def register_user(user: UserCreate):
     if get_user_by_username(user.username):
         raise HTTPException(status_code=400, detail="이미 존재하는 아이디입니다.")
     try:
-        # 닉네임도 같이 전달
         create_user(user.username, user.password, user.nickname)
         return {"message": "가입 완료"}
     except Exception as e:
         print(f"회원가입 에러: {e}")
         raise HTTPException(status_code=500, detail="회원가입 중 오류가 발생했습니다.")
 
+# 로그인
 @app.post("/api/auth/login", response_model=Token)
 def login_user(form_data: OAuth2PasswordRequestForm = Depends()):
     db_user = get_user_by_username(form_data.username)
@@ -357,6 +339,7 @@ def login_user(form_data: OAuth2PasswordRequestForm = Depends()):
     access_token = create_access_token(data=token_data)
     return {"access_token": access_token, "token_type": "bearer"}
 
+# 내 정보 조회
 @app.get("/api/users/me")
 def read_users_me(current_user: dict = Depends(get_current_user)):
     user_id = current_user['user_id']
@@ -371,6 +354,7 @@ def read_users_me(current_user: dict = Depends(get_current_user)):
     }
     return {"user": user_info, "allergies": my_allergies}
 
+# 내 알레르기 추가
 @app.post("/api/users/me/allergies", status_code=status.HTTP_201_CREATED)
 def add_my_allergy(allergy_data: UserAllergyCreate, current_user: dict = Depends(get_current_user)):
     try:
@@ -381,12 +365,14 @@ def add_my_allergy(allergy_data: UserAllergyCreate, current_user: dict = Depends
         if e.args[0] == 1062: raise HTTPException(status_code=409, detail="이미 등록된 알레르기입니다.")
         raise HTTPException(status_code=500, detail="알레르기 등록 실패")
 
+# 내 알레르기 삭제
 @app.delete("/api/users/me/allergies/{allergy_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_my_allergy(allergy_id: int, current_user: dict = Depends(get_current_user)):
     if not delete_user_allergy_by_id(current_user['user_id'], allergy_id):
         raise HTTPException(status_code=404, detail="등록되지 않은 알레르기입니다.")
     return {"detail": "삭제됨"}
 
+# 내 계정 삭제
 @app.delete("/api/users/me", status_code=status.HTTP_204_NO_CONTENT)
 def delete_my_account(delete_data: UserDelete, current_user: dict = Depends(get_current_user)):
     if not bcrypt.checkpw(delete_data.password.encode('utf-8'), current_user['password'].encode('utf-8')):
@@ -395,7 +381,7 @@ def delete_my_account(delete_data: UserDelete, current_user: dict = Depends(get_
         raise HTTPException(status_code=403, detail="계정 삭제 실패")
     return {"detail": "삭제됨"}
 
-# [수정된 안전한 검색 함수]
+# 식품 검색
 @app.get("/api/food/search", response_model=List[FoodSearchResult])
 def search_food(
     q: str = Query(..., min_length=1, description="검색할 식품 이름"),
@@ -439,6 +425,7 @@ def search_food(
             
     return results
 
+# 식품 상세 조회
 @app.get("/api/food/{food_id}", response_model=FoodDetailsResponse)
 def get_food_detail(food_id: int, current_user: Optional[dict] = Depends(get_current_user_optional)):
     food_details = get_food_details_by_id(food_id)
@@ -446,7 +433,7 @@ def get_food_detail(food_id: int, current_user: Optional[dict] = Depends(get_cur
     
     food_allergies = get_allergies_for_food(food_id)
     
-    # 1. 경고 분석 (내 알레르기와 겹치는지)
+    # 경고 분석 (내 알레르기와 겹치는지)
     warning_list = None
     if current_user:
         u_al = {a['allergy_name'] for a in get_user_allergies(current_user['user_id'])}
@@ -454,7 +441,7 @@ def get_food_detail(food_id: int, current_user: Optional[dict] = Depends(get_cur
         common = u_al.intersection(f_al)
         if common: warning_list = list(common)
 
-    # 2. 교차 반응 분석 (의학적 정보 제공)
+    # 교차 반응 분석
     cross_reactions_list = []
     seen_crs = set()
     for allergy in food_allergies:
@@ -464,19 +451,20 @@ def get_food_detail(food_id: int, current_user: Optional[dict] = Depends(get_cur
                 cross_reactions_list.append(cr)
                 seen_crs.add(cr['cross_reaction_name'])
 
-    # [수정] alternatives(대체식품), related_foods(관련제품) 모두 제거
     return {
         "food": food_details,
         "allergies": food_allergies,
         "warning": warning_list,
-        "alternatives": [], # 빈 리스트 반환 (에러 방지용)
+        "alternatives": [], # 에러 방지용 빈 리스트 반환
         "cross_reactions": cross_reactions_list
     }
 
+# 전체 알레르기 목록 조회
 @app.get("/api/allergies", response_model=List[Allergy])
 def get_all_allergy_list():
     return get_all_allergies()
 
+# 관리자 식품 등록
 @app.post("/api/admin/food", status_code=status.HTTP_201_CREATED)
 def create_new_food(food_data: FoodCreate, current_user: dict = Depends(get_current_admin_user)):
     try:
@@ -486,6 +474,7 @@ def create_new_food(food_data: FoodCreate, current_user: dict = Depends(get_curr
     except MySQLError as e:
         raise HTTPException(status_code=500, detail=f"DB 오류: {e}")
 
+# 관리자 식품 알레르기 정보 수정
 @app.put("/api/admin/food/{food_id}/allergies")
 def update_food_allergy_info(food_id: int, update_data: FoodUpdateAllergy, current_user: dict = Depends(get_current_admin_user)):
     try:
@@ -495,20 +484,24 @@ def update_food_allergy_info(food_id: int, update_data: FoodUpdateAllergy, curre
     except MySQLError as e:
         raise HTTPException(status_code=500, detail=f"DB 오류: {e}")
 
+# 관리자 식품 삭제
 @app.delete("/api/admin/food/{food_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_food_item(food_id: int, current_user: dict = Depends(get_current_admin_user)):
     if not delete_food_by_id(food_id):
         raise HTTPException(status_code=404, detail="삭제 실패: 식품이 없거나 DB 오류")
     return {"detail": "삭제됨"}
 
+# 관리자 전체 사용자 조회
 @app.get("/api/admin/users", response_model=List[UserInfo])
 def read_all_users(current_user: dict = Depends(get_current_admin_user)):
     return get_all_users()
 
+# 관리자 알레르기 통계
 @app.get("/api/admin/stats", response_model=List[AllergyStat])
 def read_allergy_stats(limit: int = 5, current_user: dict = Depends(get_current_admin_user)):
     return get_top_allergies(limit)
 
+# 프로필 수정
 @app.put("/api/users/me/profile")
 async def update_profile(
     nickname: Optional[str] = Form(None),
@@ -540,6 +533,7 @@ async def update_profile(
         "nickname": nickname
     }
 
+# 비밀번호 변경
 @app.put("/api/users/me/password")
 def change_password(
     pw_data: PasswordChange,
@@ -554,6 +548,7 @@ def change_password(
         
     return {"message": "비밀번호가 변경되었습니다."}
 
+# 관리자 최근 등록된 음식 조회
 @app.get("/api/admin/foods")
 def read_recent_foods(
     q: Optional[str] = Query(None), # 검색어 받기 (없으면 None)
@@ -562,26 +557,21 @@ def read_recent_foods(
     # 검색어(q)를 queries.py 함수로 전달
     return get_recent_foods(query=q)
 
-@app.get("/")
-def read_root():
-    return {"message": "파기딥 프로젝트 API 서버 (Full Version)"}
-
-# [MLOps] 사용자 피드백 저장 API
+# 사용자 피드백 저장 API
 @app.post("/api/ai/feedback")
 def save_feedback(data: FeedbackCreate):
     temp_path = f"static/ai_temp/{data.filename}"
     target_path = f"static/dataset/images/{data.filename}"
     
-    # 1. 임시 폴더에 있던 이미지를 '학습 데이터 폴더'로 이동
+    #임시 폴더에 있던 이미지를 학습 데이터 폴더로 이동
     if os.path.exists(temp_path):
         shutil.move(temp_path, target_path)
     else:
-        # 이미 이동했거나 없으면 패스 (혹은 에러 처리)
+        # 이미 이동했거나 없으면 패스
         if not os.path.exists(target_path):
             return {"message": "이미지가 만료되었습니다."}
 
-    # 2. 정답 라벨 저장 (CSV 형태: 파일명, 정답)
-    # 나중에 이 파일을 읽어서 모델 재학습에 사용함
+    # 정답 라벨 저장
     log_file = "static/dataset/labels/feedback_log.csv"
     
     # 파일이 없으면 헤더 작성
@@ -589,26 +579,24 @@ def save_feedback(data: FeedbackCreate):
         with open(log_file, "w", encoding="utf-8-sig") as f:
             f.write("filename,correct_label,timestamp\n")
             
-    # 내용 추가 (Append 모드)
+    # 내용 추가
     with open(log_file, "a", encoding="utf-8-sig") as f:
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         f.write(f"{data.filename},{data.correct_name},{now}\n")
         
-    print(f"📈 [MLOps] 사용자 피드백 수집됨: {data.correct_name}")
+    print(f"사용자 피드백 수집됨: {data.correct_name}")
     return {"message": "소중한 데이터 감사합니다! 모델 학습에 반영됩니다."}
 
-# api_main.py 의 analyze_ingredients 함수 교체
-
-# [수정됨] 관리자 성분표 스캔 (Gemini 1.5 Flash 활용 - 가장 빠르고 정확)
+# 관리자 성분표 스캔 - Gemini 2.5 Flash
 @app.post("/api/admin/ocr")
 async def analyze_ingredients(file: UploadFile = File(...)):
-    # 1. 이미지 읽기
+    # 이미지 읽기
     image_data = await file.read()
     image = Image.open(io.BytesIO(image_data))
 
     print(f"📸 관리자 OCR 요청 (Gemini): {file.filename}")
     
-    # 2. DB에 있는 모든 알레르기 이름 가져오기 (매칭용)
+    # DB에 있는 모든 알레르기 이름 가져오기
     all_allergy_list = get_all_allergies()
     allergy_names_str = ", ".join([a['allergy_name'] for a in all_allergy_list])
 
@@ -616,7 +604,7 @@ async def analyze_ingredients(file: UploadFile = File(...)):
     raw_text = ""
 
     try:
-        # 3. Gemini 1.5 Flash에게 OCR + 분석 시키기
+        # 3. Gemini 2.5 Flash에게 OCR + 분석 시키기
         if GOOGLE_API_KEY == "여기에_GEMINI_API_KEY_입력":
             return {"error": "API 키가 설정되지 않았습니다."}
 
@@ -642,22 +630,57 @@ async def analyze_ingredients(file: UploadFile = File(...)):
         raw_text = ai_data.get("raw_text", "")
         found_names = ai_data.get("found_allergies", [])
         
-        print(f"✨ OCR 분석 성공: {found_names}")
+        print(f"OCR 분석 성공: {found_names}")
 
-        # 4. 찾은 이름을 DB의 ID로 변환 (체크박스 체크용)
+        # 찾은 이름을 DB의 ID로 변환
         for found in found_names:
             for db_item in all_allergy_list:
-                # 포함 관계 확인 (예: '대두'가 '탈지대두'에 포함됨)
+                # 포함 관계 확인
                 if db_item['allergy_name'] in found or found in db_item['allergy_name']:
                     if db_item['allergy_id'] not in detected_allergies:
                         detected_allergies.append(db_item['allergy_id'])
 
     except Exception as e:
-        print(f"❌ OCR 에러: {e}")
-        # 에러가 나도 죽지 않고 빈 결과 반환 (그래야 프론트가 안 멈춤)
+        print(f"OCR 에러: {e}")
         return {"raw_text": "분석 실패", "detected_ids": []}
 
     return {
         "raw_text": raw_text,
         "detected_ids": detected_allergies
     }
+
+# 정적 파일 서빙
+@app.get("/style.css")
+def get_style_css():
+    return FileResponse(os.path.join(BASE_DIR, "style.css"),
+                        media_type="text/css")
+
+@app.get("/script.js")
+def get_script_js():
+    return FileResponse(os.path.join(BASE_DIR, "script.js"),
+                        media_type="application/javascript")
+
+# 기본 루트
+@app.get("/", response_class=HTMLResponse)
+def serve_index():
+    return FileResponse(os.path.join(BASE_DIR, "index.html"))
+
+# 인덱스 페이지
+@app.get("/index", response_class=HTMLResponse)
+def read_index():
+    return FileResponse(os.path.join(BASE_DIR, "index.html"))
+
+# 검색 페이지
+@app.get("/search", response_class=HTMLResponse)
+def serve_search():
+    return FileResponse(os.path.join(BASE_DIR, "search.html"))
+
+# 마이페이지
+@app.get("/mypage", response_class=HTMLResponse)
+def serve_mypage():
+    return FileResponse(os.path.join(BASE_DIR, "mypage.html"))
+
+# 관리자 페이지
+@app.get("/admin", response_class=HTMLResponse)
+def serve_admin():
+    return FileResponse(os.path.join(BASE_DIR, "admin.html"))

@@ -1,13 +1,11 @@
 @charset "UTF-8";
 
-/* 폰트 설정 */
 body { 
     font-family: 'Pretendard', sans-serif; 
     background-color: #F8FAFC; 
-    color: #1e293b; /* slate-800 */
+    color: #1e293b;
 }
 
-/* 필터 칩 활성화 (검색용) */
 .filter-chip.active { 
     background-color: #FEF2F2; 
     color: #DC2626; 
@@ -16,7 +14,6 @@ body {
     box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.2);
 }
 
-/* 설정 칩 활성화 (마이페이지용) */
 .setting-chip.active {
     background-color: #fee2e2; 
     color: #b91c1c; 
@@ -24,13 +21,11 @@ body {
     font-weight: 700;
 }
 
-/* 카드 호버 효과 */
 .card-hover:hover { 
     transform: translateY(-5px); 
     transition: all 0.3s ease; 
 }
 
-/* 스크롤바 숨기기 (모바일 등에서 깔끔하게) */
 .custom-scroll::-webkit-scrollbar { 
     display: none; 
 }
@@ -41,9 +36,6 @@ body {
 
 input[type="search"]::-webkit-search-cancel-button {
     position: relative;
-    right: 10px;       /* 오른쪽에서 안쪽으로 10px 이동 (숫자를 조절해보세요) */
-    cursor: pointer;   /* 마우스 올리면 손가락 모양 */
-    
-    /* 크기를 키우고 싶다면 아래 주석을 해제하세요 */
-    /* transform: scale(1.2); */ 
+    right: 10px;
+    cursor: pointer;
 }

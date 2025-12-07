@@ -4,22 +4,14 @@ import shutil
 import random
 from tqdm import tqdm
 
-# ==========================================
-# 1. 설정 (검증용은 50장이면 충분!)
-# ==========================================
-MAX_VAL_IMAGES = 30 # 기존 제한 없음 -> 50장으로 축소
+MAX_VAL_IMAGES = 30
 
-# 경로 설정 (아까랑 똑같이)
-BASE_TRAIN_IMAGE = r"E:\데이터셋\건강관리를 위한 음식 이미지\Training\원천" # 클래스 순서 맞추기용
+BASE_TRAIN_IMAGE = r"E:\데이터셋\건강관리를 위한 음식 이미지\Training\원천"
 BASE_VAL_LABEL = r"E:\데이터셋\건강관리를 위한 음식 이미지\Validation\라벨"
 BASE_VAL_IMAGE = r"E:\데이터셋\건강관리를 위한 음식 이미지\Validation\원천"
 OUTPUT_DIR = r"E:\YOLO\datasets"
 
-# ==========================================
-# 2. 유틸리티 함수
-# ==========================================
 def build_image_folder_map(image_root):
-    # 폴더 지도 만들기
     folder_map = {}
     for root, dirs, files in os.walk(image_root):
         folder_name = os.path.basename(root)
@@ -29,19 +21,17 @@ def build_image_folder_map(image_root):
     return folder_map
 
 def process_val_only(label_root, image_folder_map, output_root, class_to_id):
-    # 1. 기존 무거운 val 폴더 삭제 (수술 시작)
     val_path = os.path.join(output_root, 'val')
     if os.path.exists(val_path):
-        print(f"🗑️ 기존의 무거운 Validation 폴더를 삭제합니다... ({val_path})")
+        print(f"기존의 Validation 폴더를 삭제합니다... ({val_path})")
         shutil.rmtree(val_path)
     
-    # 2. 폴더 다시 생성
     img_dest = os.path.join(output_root, 'val', 'images')
     lbl_dest = os.path.join(output_root, 'val', 'labels')
     os.makedirs(img_dest, exist_ok=True)
     os.makedirs(lbl_dest, exist_ok=True)
 
-    print(f"\n🚀 [Validation] 데이터 재구축 시작 (최대 {MAX_VAL_IMAGES}장 제한)...")
+    print(f"\n[Validation] 데이터 재구축 시작 (최대 {MAX_VAL_IMAGES}장 제한)...")
     
     total_processed = 0
     pbar = tqdm(desc="Validation 처리 중", unit="장")
@@ -59,9 +49,6 @@ def process_val_only(label_root, image_folder_map, output_root, class_to_id):
         if not target_image_dir or clean_name not in class_to_id: continue
         class_id = class_to_id[clean_name]
 
-        # ==========================================
-        # [핵심] 50장만 랜덤 샘플링 (다이어트!)
-        # ==========================================
         if len(json_files) > MAX_VAL_IMAGES:
             selected_files = random.sample(json_files, MAX_VAL_IMAGES)
         else:
@@ -107,16 +94,13 @@ def process_val_only(label_root, image_folder_map, output_root, class_to_id):
 
 if __name__ == "__main__":
     # 1. 클래스 ID 순서 확보 (Train 데이터 기준)
-    # *중요* Train 폴더의 순서와 똑같아야 하므로, Train 원천 폴더를 한 번 스캔합니다.
-    # (이미지 복사는 안 하고 목록만 가져오니까 금방 끝납니다)
-    print("📋 클래스 목록 동기화 중...")
+    print("클래스 목록 동기화 중...")
     train_map = build_image_folder_map(BASE_TRAIN_IMAGE)
     classes = sorted(list(train_map.keys()))
     class_to_id = {name: i for i, name in enumerate(classes)}
     
     # 2. Validation 지도 만들기
-    print("🗺️ Validation 폴더 지도 생성 중...")
+    print("Validation 폴더 지도 생성 중...")
     val_map = build_image_folder_map(BASE_VAL_IMAGE)
     
-    # 3. 수술 시작
     process_val_only(BASE_VAL_LABEL, val_map, OUTPUT_DIR, class_to_id)

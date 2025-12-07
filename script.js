@@ -1,11 +1,14 @@
-const API_BASE = "http://127.0.0.1:8000/api";
+const ORIGIN = window.location.origin.replace(/\/$/, "");
+const API_BASE = `${ORIGIN}/api`;
+const PATH = window.location.pathname;
+
 let authToken = localStorage.getItem("token");
 
 const Toast = Swal.mixin({
     toast: true,
-    position: 'top-end',       // 우측 상단에 표시
-    showConfirmButton: false,  // 확인 버튼 없음
-    timer: 2000,               // 2초 뒤 자동 사라짐
+    position: 'top-end',
+    showConfirmButton: false,
+    timer: 2000,
     timerProgressBar: true,
     didOpen: (toast) => {
         toast.addEventListener('mouseenter', Swal.stopTimer)
@@ -13,7 +16,6 @@ const Toast = Swal.mixin({
     }
 });
 
-// 25개 알레르기 전체 리스트
 const allAllergiesList = [
     {id: 1, name: "난류"}, {id: 2, name: "가금류"}, {id: 3, name: "계란"}, {id: 4, name: "소고기"}, 
     {id: 5, name: "쇠고기"}, {id: 6, name: "돼지고기"}, {id: 7, name: "닭고기"}, {id: 8, name: "새우"}, 
@@ -39,9 +41,8 @@ let selectedAllergens = new Set();
 let myAllergyIds = new Set();
 let currentPage = 1;
 let currentQuery = "";
-let isIdVerified = false; // 중복 확인 완료 여부
+let isIdVerified = false;
 
-// ================= 로그아웃 (최상단 배치) =================
 function logout() {
     Swal.fire({
         text: "로그아웃 하시겠습니까?",
@@ -55,30 +56,34 @@ function logout() {
         if (result.isConfirmed) {
             localStorage.clear();
             authToken = null;
-            window.location.href = "index.html";
+            window.location.href = ORIGIN + "/";
         }
     });
 }
 
-// ================= 페이지 로드 시 실행 =================
 window.onload = async () => {
-    // 1. 마이페이지 로직
+    // 마이페이지 로직
     if (document.getElementById('myAllergyContainer')) {
-        if (!authToken) { alert("로그인이 필요합니다."); window.location.href = "index.html"; return; }
+        if (!authToken) { 
+            alert("로그인이 필요합니다."); 
+            window.location.href = ORIGIN + "/"; 
+            return; 
+        }
         await fetchMyInfoForMyPage();
     }
 
-    // 2. 메인/검색 페이지 로직
+    // 메인/검색 페이지 로직
     if (document.getElementById('filterContainer')) {
         renderFilters();
-        checkLoginStatus(); // 상단바 업데이트
+        await checkLoginStatus(); // 상단바 업데이트
         
         const searchInput = document.getElementById("searchInput");
         if (searchInput) {
             searchInput.addEventListener("keypress", (e) => { if (e.key === "Enter") handleSearch(); });
         }
 
-        if (window.location.pathname.includes("search.html")) {
+        // /search 로 접근했을 때만 동작
+        if (PATH.startsWith("/search")) {
             const params = new URLSearchParams(window.location.search);
             const q = params.get('q');
             const avoid = params.getAll('avoid');
@@ -100,9 +105,13 @@ window.onload = async () => {
         }
     }
 
-    // 3. 관리자 페이지 로직
+    // 관리자 페이지 로직
     if (document.getElementById('totalUserCount')) {
-        if (!authToken) { alert("관리자 로그인이 필요합니다."); window.location.href = "index.html"; return; }
+        if (!authToken) { 
+            alert("관리자 로그인이 필요합니다."); 
+            window.location.href = ORIGIN + "/"; 
+            return; 
+        }
         await loadAdminDashboard();
     }
 };
@@ -113,8 +122,6 @@ function resetIdCheck() {
     msg.classList.add('hidden');
     msg.className = "text-xs mt-1 font-bold hidden"; // 클래스 초기화
 }
-
-// ================= [핵심] 마이페이지 최적화 로직 (캐싱 + 프로필 수정) =================
 
 function loadProfileFromCache() {
     const cName = localStorage.getItem("cached_nickname");
@@ -130,11 +137,18 @@ function loadProfileFromCache() {
         if (cRole === 'admin') {
             roleEl.innerHTML = '<span class="text-emerald-600 font-bold">👑 관리자 (Admin)</span>';
             const adminBtn = document.getElementById('adminBtn');
-            if (adminBtn) adminBtn.classList.remove('hidden');
+            if (adminBtn) {
+                adminBtn.classList.remove('hidden');
+                adminBtn.onclick = () => {
+                    window.location.href = "/admin";
+                };
+            }
         } else roleEl.innerText = '일반 회원';
     }
     const imgEl = document.getElementById('profileImage');
-    if (imgEl && cImg && cImg !== "null") imgEl.src = `http://127.0.0.1:8000${cImg}`;
+    if (imgEl && cImg && cImg !== "null") {
+        imgEl.src = buildProfileImageUrl(cImg);
+    }
 }
 
 function saveProfileToCache(nick, user, role, img) {
@@ -143,6 +157,19 @@ function saveProfileToCache(nick, user, role, img) {
     localStorage.setItem("cached_role", role);
     localStorage.setItem("cached_profile_image", img);
 }
+
+function buildProfileImageUrl(rawPath) {
+    if (!rawPath) return null;
+
+    let url = rawPath.startsWith("http")
+        ? rawPath
+        : `${ORIGIN}/${rawPath.replace(/^\/+/, "")}`;
+
+    const base = url.split("?")[0];
+
+    return `${base}?v=${Date.now()}`;
+}
+
 
 async function fetchMyInfoForMyPage() {
     loadProfileFromCache();
@@ -160,13 +187,24 @@ async function fetchMyInfoForMyPage() {
             if (data.user.role === 'admin') {
                 roleEl.innerHTML = '<span class="text-emerald-600 font-bold">👑 관리자 (Admin)</span>';
                 const adminBtn = document.getElementById('adminBtn');
-                if (adminBtn) adminBtn.classList.remove('hidden');
+                if (adminBtn) {
+                    adminBtn.classList.remove('hidden');
+                        
+                    adminBtn.onclick = () => {
+                        window.location.href = "/admin";
+                    };
+                }
             } else roleEl.innerText = '일반 회원';
         }
         
         const imgEl = document.getElementById('profileImage');
-        if (data.user.profile_image) imgEl.src = `http://127.0.0.1:8000${data.user.profile_image}`;
-        else imgEl.src = "https://via.placeholder.com/150?text=USER";
+        if (imgEl) {
+            if (data.user.profile_image) {
+                imgEl.src = buildProfileImageUrl(data.user.profile_image);
+            } else {
+                imgEl.src = "https://via.placeholder.com/150?text=USER";
+            }
+        }
 
         saveProfileToCache(dispName, data.user.username, data.user.role, data.user.profile_image);
         myAllergyIds.clear();
@@ -204,12 +242,7 @@ async function toggleMyAllergy(id) {
     } catch (e) { alert("오류 발생"); }
 }
 
-// ------------------- [추가된 마이페이지 기능들] -------------------
-
-// script.js의 uploadProfileImage 함수를 이걸로 덮어쓰세요
-
 async function uploadProfileImage(input) {
-    // 파일이 선택되었는지 확인
     if (input.files && input.files[0]) {
         const formData = new FormData();
         formData.append("file", input.files[0]);
@@ -224,25 +257,26 @@ async function uploadProfileImage(input) {
             if (res.ok) {
                 const data = await res.json();
                 
-                // 1. 캐시 데이터 최신화 (이미지 경로 업데이트)
-                // (기존 정보들은 유지하고 이미지만 바꿉니다)
                 const currentName = document.getElementById('profileName').innerText;
                 const currentUser = document.getElementById('profileUsername').innerText;
                 const currentRole = localStorage.getItem("cached_role");
                 const currentAllergies = JSON.parse(localStorage.getItem("cached_allergies") || "[]");
                 
                 saveProfileToCache(currentName, currentUser, currentRole, data.profile_image, currentAllergies);
-
-                // 2. [수정됨] 예쁜 알림창 띄우기
+                
+                const imgEl = document.getElementById('profileImage');
+                    if (imgEl && data.profile_image) {
+                        imgEl.src = buildProfileImageUrl(data.profile_image);
+                    }
+                
                 await Swal.fire({
                     title: '프로필 사진 변경 완료!',
                     text: '새로운 이미지가 적용되었습니다.',
                     icon: 'success',
-                    confirmButtonColor: '#10B981', // Emerald-500 색상
+                    confirmButtonColor: '#10B981',
                     confirmButtonText: '확인'
                 });
 
-                // 3. 확인 누르면 새로고침 (상단바 아이콘까지 싹 바뀌게)
                 location.reload();
 
             } else {
@@ -268,20 +302,16 @@ async function saveNickname() {
         if(res.ok) {
             document.getElementById('profileName').innerText = newNick;
             document.getElementById('nicknameForm').classList.add('hidden');
-            // 캐시 업데이트
             const currentUser = document.getElementById('profileUsername').innerText;
-            const currentImgPath = document.getElementById('profileImage').src.replace("http://127.0.0.1:8000", "").split("?")[0];
-            saveProfileToCache(newNick, currentUser, null, currentImgPath);
+            const imgSrc = document.getElementById('profileImage').src;
+            const imgPath = imgSrc.replace(ORIGIN, "").split("?")[0];
+            saveProfileToCache(newNick, currentUser, null, imgPath);
             alert("닉네임이 변경되었습니다.");
         } else alert("변경 실패");
     } catch(e) { alert("오류"); }
 }
 
 function togglePwForm() { document.getElementById('pwForm').classList.toggle('hidden'); }
-
-// script.js 의 changePassword 함수 교체
-
-// script.js 의 changePassword 함수 교체
 
 async function changePassword() {
     const cPw = document.getElementById('currentPw').value;
@@ -291,7 +321,6 @@ async function changePassword() {
     if (!cPw || !nPw) return Swal.fire('입력 오류', '모든 항목을 입력해주세요.', 'warning');
     if (nPw !== cfPw) return Swal.fire('불일치', '새 비밀번호가 일치하지 않습니다.', 'warning');
 
-    // 1. [변경 전 질문] 정말 바꿀 건지 먼저 물어봅니다.
     const confirmResult = await Swal.fire({
         text: "정말로 비밀번호를 변경하시겠습니까?",
         icon: 'question',
@@ -318,8 +347,6 @@ async function changePassword() {
         });
 
         if (res.ok) {
-            // 2. [변경 후 강제 로그아웃]
-            // logout() 함수를 부르지 않고, 여기서 직접 정보를 지우고 튕겨냅니다.
             await Swal.fire({
                 title: '변경 완료',
                 text: '보안을 위해 다시 로그인해주세요.',
@@ -328,10 +355,9 @@ async function changePassword() {
                 confirmButtonText: '확인'
             });
 
-            // 캐시 삭제 및 메인 이동 (질문 없이 즉시 실행)
             localStorage.clear();
             authToken = null;
-            window.location.href = "index.html";
+            window.location.href = ORIGIN + "/";
 
         } else {
             const e = await res.json();
@@ -342,7 +368,6 @@ async function changePassword() {
     }
 }
 
-// ================= 인증 및 상단바 UI (Navbar) =================
 function checkLoginStatus() {
     const authSection = document.getElementById('authSection');
     if (!authSection) return;
@@ -370,11 +395,13 @@ async function fetchUserInfoForNavbar() {
         if (authSection) {
             const initial = data.user.username.charAt(0).toUpperCase();
             let profileImgHtml = `<div class="w-8 h-8 bg-emerald-500 rounded-full flex items-center justify-center text-white text-sm font-bold border-2 border-emerald-100 group-hover:bg-emerald-600 transition">${initial}</div>`;
-            if(data.user.profile_image) profileImgHtml = `<img src="http://127.0.0.1:8000${data.user.profile_image}" class="w-8 h-8 rounded-full border-2 border-emerald-100 object-cover">`;
-
+            if (data.user.profile_image) {
+                const imgUrl = buildProfileImageUrl(data.user.profile_image);  // 🔥 여기만 변경
+                profileImgHtml = `<img src="${imgUrl}" class="w-8 h-8 rounded-full border-2 border-emerald-100 object-cover">`;
+            }
             authSection.innerHTML = `
                 <div class="flex items-center gap-3 bg-white border border-slate-200 rounded-full pl-1 pr-4 py-1 shadow-sm hover:shadow-md transition">
-                    <a href="mypage.html" class="flex items-center gap-2 group" title="마이페이지">
+                    <a href="/mypage" class="flex items-center gap-2 group" title="마이페이지">
                         ${profileImgHtml}
                         <div class="flex flex-col justify-center">
                             <span class="text-xs font-bold text-slate-700 leading-none group-hover:text-emerald-600 transition">${data.user.nickname || data.user.username}</span>
@@ -400,7 +427,6 @@ async function fetchUserInfoForNavbar() {
     } catch (e) { logout(); }
 }
 
-// ================= 검색 & 필터 로직 =================
 function renderFilters() {
     const container = document.getElementById('filterContainer');
     if (!container) return;
@@ -437,43 +463,71 @@ function handleSearch() {
             showConfirmButton: false,
             timer: 700
         });
-        return; }
+        return; 
+    }
     const params = new URLSearchParams();
     params.append('q', query);
     selectedAllergens.forEach(id => params.append('avoid', id));
-    if (window.location.pathname.includes("search.html")) {
-        currentQuery = query; currentPage = 1;
-        window.history.pushState({}, "", `search.html?${params.toString()}`);
+
+    if (PATH.startsWith("/search")) {
+        currentQuery = query; 
+        currentPage = 1;
+        window.history.pushState({}, "", `/search?${params.toString()}`);
         document.getElementById('resultGrid').innerHTML = "";
         document.getElementById('loadMoreBtn').classList.add('hidden');
         document.getElementById('loading').classList.remove('hidden');
         fetchAndRender();
-    } else { window.location.href = `search.html?${params.toString()}`; }
+    } else { 
+        window.location.href = `${ORIGIN}/search?${params.toString()}`; 
+    }
 }
 
 async function loadMore() { currentPage++; await fetchAndRender(); }
 
-// script.js - fetchAndRender 함수 전체 교체
-
+// 검색 및 결과 렌더링
 async function fetchAndRender() {
     let url = `${API_BASE}/food/search?q=${currentQuery}&page=${currentPage}&limit=12`;
     selectedAllergens.forEach(id => url += `&avoid=${id}`);
     const headers = authToken ? { 'Authorization': `Bearer ${authToken}` } : {};
-    
+
     try {
+        if (authToken && myAllergyIds.size === 0) {
+            try {
+                const meRes = await fetch(`${API_BASE}/users/me`, {
+                    headers: { 'Authorization': `Bearer ${authToken}` }
+                });
+                if (meRes.ok) {
+                    const meData = await meRes.json();
+                    myAllergyIds.clear();
+                    (meData.allergies || []).forEach(a => myAllergyIds.add(a.allergy_id));
+                    console.log("내 알레르기 로드 완료:", Array.from(myAllergyIds));
+                } else {
+                    console.warn("사용자 정보 로드 실패(검색 페이지):", meRes.status);
+                }
+            } catch (e) {
+                console.error("사용자 알레르기 정보 로드 중 오류:", e);
+            }
+        }
+
         const res = await fetch(url, { headers });
         const data = await res.json();
-        
-        // 데이터 확인용 로그 (F12 콘솔에서 확인 가능)
+
         console.log("검색 결과 데이터:", data);
 
         document.getElementById('loading').classList.add('hidden');
-        if(document.getElementById('resultCount')) document.getElementById('resultCount').innerText = data.length > 0 ? `${data.length}개 검색됨` : "0건";
-        
+        if (document.getElementById('resultCount')) {
+            document.getElementById('resultCount').innerText =
+                data.length > 0 ? `${data.length}개 검색됨` : "0건";
+        }
+
         const grid = document.getElementById('resultGrid');
-        
+
         if (data.length === 0 && currentPage === 1) {
-            grid.innerHTML = `<div class="col-span-full text-center py-20"><i class="fa-regular fa-face-sad-tear text-4xl text-slate-300 mb-4"></i><p class="text-slate-500">검색 결과가 없습니다.</p></div>`;
+            grid.innerHTML = `
+                <div class="col-span-full text-center py-20">
+                    <i class="fa-regular fa-face-sad-tear text-4xl text-slate-300 mb-4"></i>
+                    <p class="text-slate-500">검색 결과가 없습니다.</p>
+                </div>`;
             return;
         }
 
@@ -482,41 +536,67 @@ async function fetchAndRender() {
             let cardClass = "border-slate-100 hover:border-emerald-300";
             let imgBg = "bg-slate-50";
             let iconColor = "text-slate-300";
-            
-            // 뱃지 로직 (기존과 동일)
-            const foodAllergies = item.allergy_ids || [];
+
+            const foodAllergies = Array.isArray(item.allergy_ids)
+                ? item.allergy_ids
+                : (item.allergy_ids ? [item.allergy_ids] : []);
+
+            const hasUserAllergy = authToken && myAllergyIds.size > 0;
+            const hasFilter = selectedAllergens.size > 0;
+            const hasFoodAllergy = foodAllergies.length > 0;
+
             let isDanger = false;
-            if (authToken && myAllergyIds.size > 0) {
+
+            if (hasUserAllergy && hasFoodAllergy) {
                 if (foodAllergies.some(id => myAllergyIds.has(id))) {
                     isDanger = true;
-                    badgeHTML = `<span class="absolute top-3 right-3 bg-red-500 text-white text-[10px] font-bold px-2 py-1 rounded-full shadow-md flex items-center gap-1 z-10 animate-pulse"><i class="fa-solid fa-triangle-exclamation"></i> 위험</span>`;
+                    badgeHTML = `
+                        <span class="absolute top-3 right-3 bg-red-500 text-white text-[10px] font-bold px-2 py-1 rounded-full shadow-md flex items-center gap-1 z-10 animate-pulse">
+                            <i class="fa-solid fa-triangle-exclamation"></i> 위험
+                        </span>`;
                     cardClass = "border-red-100 hover:border-red-300 ring-1 ring-red-50";
                     imgBg = "bg-red-50";
                     iconColor = "text-red-200";
                 }
             }
-            if (!isDanger && ((authToken && myAllergyIds.size > 0) || selectedAllergens.size > 0)) {
-                badgeHTML = `<span class="absolute top-3 right-3 bg-emerald-500 text-white text-[10px] font-bold px-2 py-1 rounded-full shadow-md flex items-center gap-1 z-10"><i class="fa-solid fa-check"></i> 안심</span>`;
-                imgBg = "bg-emerald-50";
-                iconColor = "text-emerald-200";
+
+            if (!isDanger) {
+                if (hasUserAllergy) {
+                    badgeHTML = `
+                        <span class="absolute top-3 right-3 bg-emerald-500 text-white text-[10px] font-bold px-2 py-1 rounded-full shadow-md flex items-center gap-1 z-10">
+                            <i class="fa-solid fa-check"></i> 안심
+                        </span>`;
+                    imgBg = "bg-emerald-50";
+                    iconColor = "text-emerald-200";
+                } else if (hasFilter) {
+                    badgeHTML = `
+                        <span class="absolute top-3 right-3 bg-emerald-500 text-white text-[10px] font-bold px-2 py-1 rounded-full shadow-md flex items-center gap-1 z-10">
+                            <i class="fa-solid fa-check"></i> 안심
+                        </span>`;
+                    imgBg = "bg-emerald-50";
+                    iconColor = "text-emerald-200";
+                } else if (!hasFoodAllergy) {
+                    badgeHTML = `
+                        <span class="absolute top-3 right-3 bg-emerald-500 text-white text-[10px] font-bold px-2 py-1 rounded-full shadow-md flex items-center gap-1 z-10">
+                            <i class="fa-solid fa-check"></i> 안심
+                        </span>`;
+                    imgBg = "bg-emerald-50";
+                    iconColor = "text-emerald-200";
+                }
             }
 
-            // [핵심 수정] 이미지 주소 생성
             const hasImg = item.food_img_url && item.food_img_url !== "";
             let finalImgUrl = "";
-            
             if (hasImg) {
-                // DB 경로가 /static/... 으로 시작하면 도메인을 붙여줍니다.
-                finalImgUrl = `http://127.0.0.1:8000${item.food_img_url}`;
-                // 디버깅: 이미지 주소가 제대로 만들어졌는지 콘솔에 출력
-                // console.log("이미지 로딩 시도:", finalImgUrl);
+                finalImgUrl = item.food_img_url.startsWith("http")
+                    ? item.food_img_url
+                    : `${ORIGIN}${item.food_img_url}`;
             }
 
             const card = document.createElement('div');
             card.className = `bg-white rounded-2xl shadow-sm border ${cardClass} overflow-hidden cursor-pointer group relative transition-all duration-300 hover:shadow-lg hover:-translate-y-1`;
             card.onclick = () => openModal('detailModal', item.food_id);
-            
-            // [핵심 수정] onerror 제거! (이미지가 깨져도 일단 태그를 숨기지 않음)
+
             card.innerHTML = `
                 ${badgeHTML}
                 <div class="h-40 w-full ${imgBg} flex items-center justify-center overflow-hidden relative">
@@ -530,17 +610,31 @@ async function fetchAndRender() {
                 </div>
                 <div class="p-5">
                     <p class="text-xs text-slate-400 font-medium mb-1">ID: ${item.food_id}</p>
-                    <h3 class="text-lg font-bold text-slate-800 leading-tight mb-2 group-hover:text-emerald-600 transition line-clamp-2">${item.food_name}</h3>
-                    <div class="flex items-center justify-between mt-4 pt-4 border-t border-slate-50"><span class="text-xs text-slate-500">상세 분석</span><div class="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center text-slate-400 group-hover:bg-emerald-500 group-hover:text-white transition"><i class="fa-solid fa-arrow-right text-xs"></i></div></div>
+                    <h3 class="text-lg font-bold text-slate-800 leading-tight mb-2 group-hover:text-emerald-600 transition line-clamp-2">
+                        ${item.food_name}
+                    </h3>
+                    <div class="flex items-center justify-between mt-4 pt-4 border-t border-slate-50">
+                        <span class="text-xs text-slate-500">상세 분석</span>
+                        <div class="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center text-slate-400 group-hover:bg-emerald-500 group-hover:text-white transition">
+                            <i class="fa-solid fa-arrow-right text-xs"></i>
+                        </div>
+                    </div>
                 </div>
             `;
             grid.appendChild(card);
         });
-        if(data.length > 0) document.getElementById('loadMoreBtn').classList.remove('hidden');
-    } catch (e) { console.error(e); alert("데이터 로드 오류"); }
+
+        if (data.length > 0) {
+            document.getElementById('loadMoreBtn').classList.remove('hidden');
+        }
+    } catch (e) {
+        console.error(e);
+        alert("데이터 로드 오류");
+    }
 }
 
-// ================= 로그인/회원가입 =================
+// ------------------ 로그인/회원가입 ------------------
+
 async function checkIdDuplicate() {
     const username = document.getElementById('regId').value;
     const msg = document.getElementById('idCheckMsg');
@@ -551,19 +645,16 @@ async function checkIdDuplicate() {
     }
 
     try {
-        // API 호출
         const res = await fetch(`${API_BASE}/auth/check-username?username=${username}`);
         const data = await res.json();
 
         msg.classList.remove('hidden');
         
         if (data.available) {
-            // 사용 가능
             msg.innerText = "✅ 사용 가능한 아이디입니다.";
             msg.className = "text-xs mt-1 font-bold text-emerald-500";
             isIdVerified = true;
         } else {
-            // 사용 불가
             msg.innerText = "❌ 이미 사용 중인 아이디입니다.";
             msg.className = "text-xs mt-1 font-bold text-red-500";
             isIdVerified = false;
@@ -578,7 +669,9 @@ async function login() {
     const username = document.getElementById('loginId').value;
     const password = document.getElementById('loginPw').value;
     try {
-        const formData = new FormData(); formData.append('username', username); formData.append('password', password);
+        const formData = new FormData(); 
+        formData.append('username', username); 
+        formData.append('password', password);
         const res = await fetch(`${API_BASE}/auth/login`, { method: 'POST', body: formData });
         if (!res.ok) throw new Error();
         const data = await res.json();
@@ -599,7 +692,6 @@ async function register() {
         return Swal.fire('입력 오류', '필수 항목을 모두 입력해주세요.', 'warning');
     }
 
-    // [핵심] 중복 확인 안 했으면 막기
     if (!isIdVerified) {
         return Swal.fire('중복 확인 필요', '아이디 중복 확인 버튼을 눌러주세요.', 'warning');
     }
@@ -639,9 +731,6 @@ async function register() {
 }
 
 async function deleteAccount() {
-    // 1. [안전 장치] 정말 탈퇴할 것인지 먼저 물어봅니다.
-
-    // 2. [본인 확인] 비밀번호 입력 받기
     const { value: pwd } = await Swal.fire({
         title: '비밀번호 확인',
         input: 'password',
@@ -653,7 +742,6 @@ async function deleteAccount() {
         cancelButtonText: '취소'
     });
 
-    // 비밀번호를 입력하지 않고 취소했으면 종료
     if (!pwd) return;
 
     const confirmResult = await Swal.fire({
@@ -661,15 +749,14 @@ async function deleteAccount() {
         text: "탈퇴 시 모든 데이터가 삭제되며 복구할 수 없습니다.",
         icon: 'warning',
         showCancelButton: true,
-        confirmButtonColor: '#d33', // 빨간색 (경고)
-        cancelButtonColor: '#94a3b8', // 회색 (취소)
+        confirmButtonColor: '#d33',
+        cancelButtonColor: '#94a3b8',
         confirmButtonText: '네, 탈퇴하겠습니다',
         cancelButtonText: '취소'
     });
 
-    // 취소했으면 함수 종료
     if (!confirmResult.isConfirmed) return;
-    // 3. [API 호출] 삭제 요청
+
     try {
         const res = await fetch(`${API_BASE}/users/me`, {
             method: 'DELETE',
@@ -681,7 +768,6 @@ async function deleteAccount() {
         });
 
         if (res.ok) {
-            // 4. [성공 시] 묻지 않고 안내 후 바로 강제 로그아웃
             await Swal.fire({
                 title: '탈퇴 완료',
                 text: '이용해 주셔서 감사합니다.',
@@ -690,13 +776,10 @@ async function deleteAccount() {
                 confirmButtonText: '확인'
             });
 
-            // 기존 logout() 함수를 부르지 않고(질문 안 함), 직접 초기화 수행
             localStorage.clear();
             authToken = null;
-            window.location.href = "index.html"; // 메인으로 튕겨내기
-
+            window.location.href = ORIGIN + "/";
         } else {
-            // 비밀번호 틀림 등 에러 처리
             const errorData = await res.json().catch(() => ({ detail: "삭제 실패" }));
             Swal.fire('탈퇴 실패', errorData.detail || '비밀번호가 일치하지 않습니다.', 'error');
         }
@@ -705,11 +788,17 @@ async function deleteAccount() {
         Swal.fire('오류', '서버 통신 중 오류가 발생했습니다.', 'error');
     }
 }
-// ================= 관리자 페이지 =================
+
+// ------------------ 관리자 페이지 ------------------
+
 async function loadAdminDashboard() {
     try {
         const resStats = await fetch(`${API_BASE}/admin/stats`, { headers: { 'Authorization': `Bearer ${authToken}` } });
-        if (resStats.status === 403) { alert("권한 없음"); location.href = "index.html"; return; }
+        if (resStats.status === 403) { 
+            alert("권한 없음"); 
+            location.href = ORIGIN + "/"; 
+            return; 
+        }
         const stats = await resStats.json();
         const statsContainer = document.getElementById('topAllergyStats');
         statsContainer.innerHTML = "";
@@ -747,8 +836,6 @@ async function registerFood() {
     } catch (e) { alert("오류"); }
 }
 
-// script.js - openModal 함수 전체 교체
-
 async function openModal(modalId, foodId = null) {
     const modal = document.getElementById(modalId);
     if(modal) modal.classList.remove('hidden');
@@ -763,23 +850,24 @@ async function openModal(modalId, foodId = null) {
             document.getElementById('mCompany').innerText = data.food.company_name || "미상";
             document.getElementById('mLink').href = data.food.food_url || "#";
 
-            // [이미지 처리]
             const imgEl = document.getElementById('mFoodImage');
             const iconEl = document.getElementById('mFoodIcon');
 
             if (data.food.food_img_url) {
-                const fullUrl = `http://127.0.0.1:8000${data.food.food_img_url}`;
-                console.log("상세 이미지 로딩:", fullUrl); // 콘솔 확인용
+                const fullUrl = data.food.food_img_url.startsWith("http")
+                    ? data.food.food_img_url
+                    : `${ORIGIN}${data.food.food_img_url}`;
+
+                console.log("상세 이미지 로딩:", fullUrl);
 
                 imgEl.src = fullUrl;
-                imgEl.classList.remove('hidden'); // 숨김 해제
-                if(iconEl) iconEl.classList.add('hidden');
+                imgEl.classList.remove('hidden');
+                if (iconEl) iconEl.classList.add('hidden');
             } else {
                 imgEl.classList.add('hidden');    
                 if(iconEl) iconEl.classList.remove('hidden'); 
             }
-
-            // 알레르기 정보 등 나머지 로직은 그대로 유지
+            
             const allergyDiv = document.getElementById('mAllergies');
             if (data.allergies.length > 0) {
                 allergyDiv.innerHTML = data.allergies.map(a => {
@@ -800,34 +888,29 @@ async function openModal(modalId, foodId = null) {
         } catch (e) { console.error(e); }
     }
 }
-// [수정된 함수] 모달 닫을 때 입력값 및 상태 초기화 기능 추가
+
 function closeModal(modalId) {
     const modal = document.getElementById(modalId);
     if (modal) {
-        modal.classList.add('hidden'); // 1. 모달 숨기기
+        modal.classList.add('hidden');
 
-        // 2. 모달 안에 있는 모든 input 태그 찾아서 내용 비우기
         const inputs = modal.querySelectorAll('input');
         inputs.forEach(input => {
             input.value = '';
         });
 
-        // 3. 회원가입 모달일 경우, 특별히 초기화해야 할 상태값들 처리
         if (modalId === 'registerModal') {
-            // 전역 변수 초기화 (중복확인 여부)
             if (typeof isIdVerified !== 'undefined') {
                 isIdVerified = false; 
             }
 
-            // 아이디 중복 확인 메시지 숨기기 & 초기화
             const idMsg = document.getElementById('idCheckMsg');
             if (idMsg) {
                 idMsg.innerText = "";
-                idMsg.className = "text-xs mt-1 font-bold hidden"; // 클래스 원상복구
+                idMsg.className = "text-xs mt-1 font-bold hidden";
                 idMsg.classList.add('hidden');
             }
 
-            // 비밀번호 일치 메시지 숨기기 & 초기화
             const pwMsg = document.getElementById('pwMatchMsg');
             if (pwMsg) {
                 pwMsg.innerText = "";
@@ -838,13 +921,9 @@ function closeModal(modalId) {
     }
 }
 
-// ================= [업그레이드] 관리자 제품 관리 로직 =================
+let allAdminFoods = [];
 
-let allAdminFoods = []; // 데이터를 저장해둘 전역 변수
-
-// ================= [수정됨] 관리자 제품 관리 (Server-side Search) =================
-
-// 1. 제품 목록 불러오기 (검색어가 있으면 검색, 없으면 전체)
+// 제품 목록 불러오기
 async function loadProductList() {
     try {
         const res = await fetch(`${API_BASE}/admin/foods`, { headers: { 'Authorization': `Bearer ${authToken}` } });
@@ -881,7 +960,6 @@ async function loadProductList() {
     } catch (e) { console.error("제품 목록 로드 실패", e); }
 }
 
-// 2. 테이블 그리기
 function renderAdminFoodTable(data) {
     const tbody = document.getElementById('foodListBody');
     tbody.innerHTML = "";
@@ -910,7 +988,6 @@ function renderAdminFoodTable(data) {
     });
 }
 
-// 3. 엔터키 입력 시 검색 실행
 function handleAdminSearch(event) {
     if (event.key === 'Enter') {
         loadProductList();
@@ -945,29 +1022,24 @@ async function deleteFood(id, name) {
     });
 }
 
-// ================= [신규] 구글 스타일 이미지 검색 =================
+// ------------------ AI 이미지 분석 ------------------
 
 async function analyzeImage(input) {
-    // 1. 파일이 선택되었는지 확인
     if (!input.files || !input.files[0]) return;
 
     const file = input.files[0];
     const loadingEl = document.getElementById('aiLoading');
     const resultArea = document.getElementById('aiResultArea');
 
-    // 2. UI 준비 (로딩 표시, 이전 결과 숨김)
     loadingEl.classList.remove('hidden');
     resultArea.classList.add('hidden');
-    // 검색창에 파일명 표시 (선택사항)
+
     document.getElementById('searchInput').value = `📷 이미지 분석 중: ${file.name}`;
 
     try {
-        // 3. 서버로 전송할 데이터 준비
         const formData = new FormData();
         formData.append("file", file);
 
-        // 4. API 호출 (로컬+Gemini 하이브리드)
-        // (API 주소는 실제 백엔드 주소로 맞춰주세요)
         const res = await fetch(`${API_BASE}/ai/predict`, {
             method: "POST",
             body: formData
@@ -976,46 +1048,37 @@ async function analyzeImage(input) {
         if (!res.ok) throw new Error("AI 분석 실패");
         const data = await res.json();
 
-        // 5. 결과 표시
         renderAiResult(data, file);
 
     } catch (e) {
         console.error(e);
         alert("이미지 분석 중 오류가 발생했습니다. 다시 시도해주세요.");
-        document.getElementById('searchInput').value = ""; // 검색창 초기화
+        document.getElementById('searchInput').value = "";
     } finally {
-        // 6. 마무리 (로딩 숨김, input 초기화)
         loadingEl.classList.add('hidden');
-        input.value = ""; // 같은 파일을 다시 선택할 수 있게 초기화
+        input.value = "";
     }
 }
 
-// 분석 결과를 화면에 그리는 함수
 function renderAiResult(data, file) {
     const resultArea = document.getElementById('aiResultArea');
     const searchInput = document.getElementById('searchInput');
 
-    // 검색창에 분석된 음식 이름 입력
     searchInput.value = data.name;
 
-    // 위험 여부 판단 (내 알레르기 정보와 대조)
-    // (주의: 현재는 재료명 텍스트로 비교하므로 정확도가 낮을 수 있음. 추후 ID 기반으로 고도화 필요)
     let dangerIngredients = [];
     if (authToken && myAllergyIds.size > 0) {
-        // 내 알레르기 이름 목록 가져오기
         const myAllergyNames = Array.from(myAllergyIds).map(id => {
             const a = allAllergiesList.find(item => item.id === id);
             return a ? a.name : "";
         }).filter(name => name !== "");
 
-        // AI가 찾은 재료 중에 내 알레르기 성분이 있는지 텍스트로 확인
         dangerIngredients = data.ingredients.filter(ing => 
             myAllergyNames.some(myAllergy => ing.includes(myAllergy))
         );
     }
     const isDanger = dangerIngredients.length > 0;
 
-    // 결과 HTML 생성
     resultArea.innerHTML = `
         <div class="flex flex-col md:flex-row gap-6 items-start">
             <div class="w-32 h-32 rounded-2xl overflow-hidden border-2 ${isDanger ? 'border-red-500' : 'border-emerald-500'} shadow-sm flex-shrink-0">
@@ -1075,23 +1138,20 @@ function renderAiResult(data, file) {
         </div>
     `;
 
-    // 결과 영역 표시
     resultArea.classList.remove('hidden');
 }
 
 async function uploadAndAnalyze(input) {
-    // 1. 파일이 선택되었는지 확인
     if (!input.files || !input.files[0]) return;
 
     const file = input.files[0];
-    const loadingEl = document.getElementById('loading'); // search.html엔 aiLoading 대신 loading 사용
+    const loadingEl = document.getElementById('loading');
     const resultArea = document.getElementById('aiResultArea');
     const card = document.getElementById('aiResultCard');
     const preview = document.getElementById('aiPreviewImg');
 
-    // UI 준비
     if(resultArea) resultArea.classList.remove('hidden');
-    // search.html 구조에 맞춰 로딩 표시 (aiLoading이 있으면 쓰고, 없으면 메인 로딩 사용)
+
     const aiLoading = document.getElementById('aiLoading');
     if(aiLoading) aiLoading.classList.remove('hidden');
     else if(loadingEl) loadingEl.classList.remove('hidden');
@@ -1099,7 +1159,6 @@ async function uploadAndAnalyze(input) {
     if(card) card.classList.add('hidden');
     if(preview) preview.src = URL.createObjectURL(file);
     
-    // 검색창에 파일명 표시
     const searchInput = document.getElementById('searchInput');
     if(searchInput) searchInput.value = `📷 이미지 분석 중...`;
 
@@ -1107,7 +1166,6 @@ async function uploadAndAnalyze(input) {
         const formData = new FormData();
         formData.append("file", file);
 
-        // API 호출
         const res = await fetch(`${API_BASE}/ai/predict`, {
             method: "POST",
             body: formData
@@ -1116,7 +1174,6 @@ async function uploadAndAnalyze(input) {
         if (!res.ok) throw new Error("AI 분석 실패");
         const data = await res.json();
 
-        // 결과 렌더링
         renderAiResult(data, file);
 
     } catch (e) {
@@ -1126,7 +1183,7 @@ async function uploadAndAnalyze(input) {
     } finally {
         if(aiLoading) aiLoading.classList.add('hidden');
         else if(loadingEl) loadingEl.classList.add('hidden');
-        input.value = ""; // 초기화
+        input.value = "";
     }
 }
 
@@ -1147,7 +1204,6 @@ function closeAiResult() {
     if(area) area.classList.add('hidden');
 }
 
-// [신규] 피드백 전송 함수
 async function sendFeedback(filename) {
     const correctName = document.getElementById('correctFoodName').value;
     if (!correctName) return alert("정확한 음식 이름을 입력해주세요.");
@@ -1165,14 +1221,11 @@ async function sendFeedback(filename) {
         if (res.ok) {
             alert("소중한 정보를 주셔서 감사합니다! 🙇‍♂️\n입력하신 이름으로 다시 검색합니다.");
             
-            // 1. 피드백 UI 변경
             document.getElementById('feedbackForm').innerHTML = `<p class="text-xs text-emerald-600 font-bold"><i class="fa-solid fa-check mr-1"></i> 피드백이 반영되었습니다.</p>`;
             
-            // 2. [핵심] 검색창 내용을 올바른 이름으로 변경
             const searchInput = document.getElementById('searchInput');
             searchInput.value = correctName;
             
-            // 3. [핵심] 변경된 이름으로 즉시 재검색
             handleSearch();
 
         } else {
@@ -1184,15 +1237,11 @@ async function sendFeedback(filename) {
     }
 }
 
-// ================= [누락된 기능 복구] 관리자 성분표 스캔 =================
-
 async function scanIngredientLabel(input) {
-    // 1. 파일 선택 확인
     if (!input.files || !input.files[0]) return;
     
     const file = input.files[0];
     const btn = document.getElementById('ocrBtn');
-    // 버튼이 없을 경우를 대비한 방어 코드
     if (!btn) {
         console.error("OCR 버튼을 찾을 수 없습니다.");
         return;
@@ -1200,7 +1249,6 @@ async function scanIngredientLabel(input) {
 
     const originalText = btn.innerHTML;
     
-    // 2. 로딩 표시
     btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> 분석 중...';
     btn.classList.add('opacity-50', 'cursor-not-allowed');
     btn.disabled = true;
@@ -1209,7 +1257,6 @@ async function scanIngredientLabel(input) {
         const formData = new FormData();
         formData.append("file", file);
 
-        // 3. API 호출 (Gemini 이용)
         const res = await fetch(`${API_BASE}/admin/ocr`, {
             method: "POST",
             headers: { 'Authorization': `Bearer ${authToken}` },
@@ -1219,9 +1266,7 @@ async function scanIngredientLabel(input) {
         if (res.ok) {
             const data = await res.json();
             
-            // 4. 결과 반영: 체크박스 자동 선택
             const checkboxes = document.querySelectorAll('input[name="newAllergy"]');
-            // 기존 체크 해제
             checkboxes.forEach(cb => cb.checked = false);
 
             let count = 0;
@@ -1244,7 +1289,6 @@ async function scanIngredientLabel(input) {
         console.error(e);
         alert("오류가 발생했습니다.");
     } finally {
-        // 5. 원상복구
         btn.innerHTML = originalText;
         btn.classList.remove('opacity-50', 'cursor-not-allowed');
         btn.disabled = false;
@@ -1252,7 +1296,7 @@ async function scanIngredientLabel(input) {
     }
 }
 
-// 비밀번호 실시간 확인용 함수
+// 비밀번호 실시간 확인
 function checkPwMatch() {
     const pw = document.getElementById('regPw').value;
     const cf = document.getElementById('regPwConfirm').value;
@@ -1273,24 +1317,20 @@ function checkPwMatch() {
     }
 }
 
-// [신규] 공유하기 버튼 기능 (제품 정보 복사)
+// 공유하기 버튼
 function shareProduct() {
-    // 1. 현재 모달창에 떠 있는 제품 이름과 링크 가져오기
     const foodName = document.getElementById('mFoodName').innerText;
     const foodLink = document.getElementById('mLink').href;
     const company = document.getElementById('mCompany').innerText;
 
-    // 2. 클립보드에 복사할 텍스트 만들기
     const textToCopy = `${foodLink}`;
 
-    // 3. 클립보드에 쓰기
     navigator.clipboard.writeText(textToCopy).then(() => {
-        // 성공 시 예쁜 팝업
         Swal.fire({
             icon: 'success',
             title: '복사 완료!',
             showConfirmButton: false,
-            timer: 700 // 1.5초 뒤 자동으로 닫힘
+            timer: 700
         });
     }).catch(err => {
         console.error('복사 실패:', err);
