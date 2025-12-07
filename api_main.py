@@ -41,12 +41,12 @@ from queries import (
 )
 
 # 1. JWT 설정
-SECRET_KEY = "4b77851cf47fdb77d433a3793435ded83916ef7aec69f26f222cb5db6673acdb"
+SECRET_KEY = ""#Secret Key
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
 # 2. Gemini API 키
-GOOGLE_API_KEY = "AIzaSyAepLyPnrcHzsHNAkigCTK7eWStquAXGYY" 
+GOOGLE_API_KEY = "" #Your Gemini API Key 
 try:
     genai.configure(api_key=GOOGLE_API_KEY)
 except:
