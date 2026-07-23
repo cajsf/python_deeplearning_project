@@ -99,7 +99,7 @@ FastAPI 백엔드
 
 **요구 환경**: Python 3.10+, MySQL 8.0+, NVIDIA GPU + CUDA, Docker Desktop(GPU 지원), NVIDIA Container Toolkit
 
-1. `api_main.py` 상단의 `SECRET_KEY`(JWT용 임의 문자열)와 `GOOGLE_API_KEY`(Gemini API 키)를 채웁니다.
+1. `.env.example`을 `.env`로 복사하고 `SECRET_KEY`(JWT용 임의 문자열)와 `GOOGLE_API_KEY`(Gemini API 키)를 채웁니다. (`.env`는 git에 올라가지 않습니다)
 2. `데이터베이스.ipynb`를 실행해 DB·테이블 생성 및 데이터를 적재합니다.
 3. Docker 이미지 빌드 및 실행:
 
@@ -107,6 +107,7 @@ FastAPI 백엔드
 docker build -t allercheck-gpu .
 
 docker run --rm -it --gpus all -p 8000:8000 `
+  --env-file .env `
   -v "<프로젝트 경로>\static\profiles:/app/static/profiles" `
   -v "<프로젝트 경로>\static\ai_temp:/app/static/ai_temp" `
   -v "<프로젝트 경로>\static\dataset:/app/static/dataset" `
@@ -115,4 +116,9 @@ docker run --rm -it --gpus all -p 8000:8000 `
 
 4. `http://localhost:8000` 접속 → 회원가입 후 사용. 관리자 기능은 `admin` 계정 가입 후 노트북의 관리자 설정 코드 실행.
 
-> 볼륨 마운트는 프로필 이미지·AI 임시 파일·피드백 데이터가 컨테이너 재시작 후에도 유지되도록 하기 위한 설정입니다. Docker 없이 로컬 실행도 가능합니다: `pip install -r requirements.txt` 후 `uvicorn api_main:app`
+> 볼륨 마운트는 프로필 이미지·AI 임시 파일·피드백 데이터가 컨테이너 재시작 후에도 유지되도록 하기 위한 설정입니다. Docker 없이 로컬 실행도 가능합니다: `pip install -r requirements.txt` 후 `uvicorn api_main:app` (`.env`는 자동 로드됩니다)
+
+## 문서
+
+- 📄 [최종 보고서 (PDF)](보고서_발표자료/파이썬기반딥러닝_기말_프로젝트_보고서.pdf)
+- 📊 [발표자료 (PDF)](보고서_발표자료/파이썬기반딥러닝_기말프로젝트_발표자료.pdf)

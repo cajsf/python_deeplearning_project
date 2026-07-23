@@ -17,6 +17,13 @@ import json
 from ultralytics import YOLO
 import google.generativeai as genai 
 
+# .env 파일 로드 (없으면 시스템 환경변수 사용)
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
 from queries import (
     create_user,
     get_user_by_username,
@@ -40,13 +47,13 @@ from queries import (
     update_food_allergies
 )
 
-# 1. JWT 설정
-SECRET_KEY = ""#Secret Key
+# 1. JWT 설정 (.env 또는 환경변수에서 로드)
+SECRET_KEY = os.environ.get("SECRET_KEY", "")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
-# 2. Gemini API 키
-GOOGLE_API_KEY = "" #Your Gemini API Key 
+# 2. Gemini API 키 (.env 또는 환경변수에서 로드)
+GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY", "")
 try:
     genai.configure(api_key=GOOGLE_API_KEY)
 except:
@@ -265,7 +272,7 @@ async def predict_food(file: UploadFile = File(...)):
     if detected_name is None or confidence < 0.7: 
         print(f"정확도 부족 ({confidence*100:.2f}%). Gemini 호출 시도...")
         
-        if GOOGLE_API_KEY == "여기에_GEMINI_API_KEY_입력":
+        if not GOOGLE_API_KEY:
             if detected_name: source = f"Local AI (Low Conf: {confidence*100:.0f}%)"
         else:
             try:
@@ -605,7 +612,7 @@ async def analyze_ingredients(file: UploadFile = File(...)):
 
     try:
         # 3. Gemini 2.5 Flash에게 OCR + 분석 시키기
-        if GOOGLE_API_KEY == "여기에_GEMINI_API_KEY_입력":
+        if not GOOGLE_API_KEY:
             return {"error": "API 키가 설정되지 않았습니다."}
 
         gemini_model = genai.GenerativeModel('gemini-2.5-flash')
